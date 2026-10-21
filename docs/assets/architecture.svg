@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 640" width="1240" height="640" role="img" aria-labelledby="t d">
+  <title id="t">Flink Ingestion Platform architecture</title>
+  <desc id="d">Users and the DE team go through the control plane (Web UI, Ingestion API, Metadata DB, Key Vault). The API renders templates and applies a FlinkDeployment to AKS. Flink reads bounded data from SQL Server, PostgreSQL and BigQuery and writes Parquet or Delta to ADLS Gen2. The run watcher tracks status and verifies row counts before publishing.</desc>
+  <style>
+    text { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; fill: #14232C; }
+    .bg { fill: #FFFFFF; }
+    .zone { fill: #E7EEF0; }
+    .zl { font-family: Consolas, "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.08em; fill: #586A75; }
+    .box { fill: #FFFFFF; stroke: #C6D3D9; stroke-width: 1.2; }
+    .hl { stroke: #0D776F; stroke-width: 1.6; }
+    .dash { fill: none; stroke: #586A75; stroke-dasharray: 5 4; }
+    .run { fill: #D3ECE8; stroke: #0D776F; stroke-dasharray: 6 4; }
+    .row { fill: #E7EEF0; }
+    .bt { font-size: 13px; font-weight: 600; }
+    .rt { font-size: 12.5px; font-weight: 600; }
+    .bs { font-family: Consolas, "JetBrains Mono", monospace; font-size: 10.5px; fill: #586A75; }
+    .edge { fill: none; stroke: #0D776F; stroke-width: 1.6; }
+    .pre { stroke-dasharray: 5 4; }
+    .aux { fill: none; stroke: #586A75; stroke-dasharray: 3 3; stroke-width: 1.2; }
+    .ah { fill: #0D776F; }
+    .ahm { fill: #586A75; }
+    .badge { fill: #0D776F; }
+    .badge-a { fill: #9A5B12; }
+    .bn { fill: #FFFFFF; font-family: Consolas, monospace; font-size: 11px; text-anchor: middle; }
+    .el { font-family: Consolas, "JetBrains Mono", monospace; font-size: 10.5px; fill: #586A75; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    <marker id="arrm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahm"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1240" height="640"/>
+
+  <!-- Users -->
+  <text class="zl" x="20" y="74">USERS</text>
+  <rect class="box" x="20" y="85" width="180" height="51" rx="8"/>
+  <text class="bt" x="34" y="106">Data user / Data team</text>
+  <text class="bs" x="34" y="124">free-form SELECT</text>
+  <rect class="box" x="20" y="200" width="180" height="64" rx="8"/>
+  <text class="bt" x="34" y="222">DE team</text>
+  <text class="bs" x="34" y="240">onboard sources</text>
+  <text class="bs" x="34" y="255">PR YAML · ingestctl</text>
+  <rect class="box" x="20" y="320" width="180" height="120" rx="8"/>
+  <text class="bt" x="34" y="342">Template repo (Git)</text>
+  <text class="bs" x="34" y="364">templates/sources/</text>
+  <text class="bs" x="34" y="382">templates/sinks/</text>
+  <text class="bs" x="34" y="400">connections/</text>
+  <text class="bs" x="34" y="418">jobs/</text>
+
+  <!-- Control plane -->
+  <rect class="zone" x="240" y="50" width="370" height="510" rx="10"/>
+  <text class="zl" x="258" y="72">CONTROL PLANE</text>
+  <rect class="box" x="260" y="85" width="330" height="51" rx="8"/>
+  <text class="bt" x="276" y="106">Web UI · React</text>
+  <text class="bs" x="276" y="124">SQL editor · preview · run history</text>
+  <rect class="box hl" x="260" y="160" width="330" height="260" rx="8"/>
+  <text class="bt" x="276" y="183">Ingestion API · FastAPI</text>
+  <rect class="row" x="275" y="195" width="300" height="36" rx="6"/>
+  <text class="rt" x="289" y="218">Template registry</text>
+  <text class="bs" x="563" y="218" text-anchor="end">versioned</text>
+  <rect class="row" x="275" y="239" width="300" height="36" rx="6"/>
+  <text class="rt" x="289" y="262">Spec / SQL validator</text>
+  <text class="bs" x="563" y="262" text-anchor="end">JSON Schema · sqlglot</text>
+  <rect class="row" x="275" y="283" width="300" height="36" rx="6"/>
+  <text class="rt" x="289" y="306">Renderer</text>
+  <text class="bs" x="563" y="306" text-anchor="end">Jinja2 → spec + CR</text>
+  <rect class="row" x="275" y="327" width="300" height="36" rx="6"/>
+  <text class="rt" x="289" y="350">Submitter</text>
+  <text class="bs" x="563" y="350" text-anchor="end">Kubernetes API</text>
+  <rect class="row" x="275" y="371" width="300" height="36" rx="6"/>
+  <text class="rt" x="289" y="394">Run watcher · Publisher</text>
+  <text class="bs" x="563" y="394" text-anchor="end">verify · commit</text>
+  <rect class="box" x="260" y="440" width="160" height="56" rx="8"/>
+  <text class="bt" x="276" y="462">Metadata DB</text>
+  <text class="bs" x="276" y="480">Postgres · runs</text>
+  <rect class="box" x="430" y="440" width="160" height="56" rx="8"/>
+  <text class="bt" x="446" y="462">Key Vault</text>
+  <text class="bs" x="446" y="480">secret refs</text>
+  <rect class="dash" x="260" y="508" width="330" height="36" rx="8"/>
+  <text class="bs" x="425" y="530" text-anchor="middle">Airflow (phase 5) → POST /jobs/{name}/runs</text>
+
+  <!-- Execution -->
+  <rect class="zone" x="650" y="50" width="280" height="510" rx="10"/>
+  <text class="zl" x="668" y="72">EXECUTION · AKS</text>
+  <rect class="box" x="670" y="85" width="240" height="51" rx="8"/>
+  <text class="bt" x="686" y="106">Flink Kubernetes Operator</text>
+  <text class="bs" x="686" y="124">reconciles FlinkDeployment</text>
+  <rect class="run" x="670" y="170" width="240" height="250" rx="8"/>
+  <text class="bt" x="686" y="192">FlinkDeployment · one run</text>
+  <rect class="box" x="690" y="205" width="200" height="48" rx="6"/>
+  <text class="bt" x="704" y="225">JobManager</text>
+  <text class="bs" x="704" y="242">batch scheduler</text>
+  <rect class="box" x="690" y="265" width="200" height="60" rx="6"/>
+  <text class="bt" x="704" y="287">TaskManager × N</text>
+  <text class="bs" x="704" y="305">ingestion-runner.jar</text>
+  <text class="bs" x="690" y="352">runtime-mode = BATCH</text>
+  <text class="bs" x="690" y="370">bounded sources</text>
+  <text class="bs" x="690" y="388">all splits read → FINISHED</text>
+  <rect class="box" x="670" y="440" width="240" height="48" rx="8"/>
+  <text class="bt" x="686" y="460">Prometheus · Grafana</text>
+  <text class="bs" x="686" y="477">metrics · alerts</text>
+  <rect class="box" x="670" y="498" width="240" height="44" rx="8"/>
+  <text class="bt" x="686" y="525">Flink History Server</text>
+
+  <!-- Sources -->
+  <rect class="zone" x="970" y="50" width="250" height="240" rx="10"/>
+  <text class="zl" x="988" y="72">SOURCES</text>
+  <rect class="box" x="990" y="90" width="210" height="52" rx="8"/>
+  <text class="bt" x="1004" y="111">SQL Server</text>
+  <text class="bs" x="1004" y="129">mssql-jdbc · read replica</text>
+  <rect class="box" x="990" y="152" width="210" height="52" rx="8"/>
+  <text class="bt" x="1004" y="173">PostgreSQL</text>
+  <text class="bs" x="1004" y="191">pgjdbc · read replica</text>
+  <rect class="box" x="990" y="214" width="210" height="52" rx="8"/>
+  <text class="bt" x="1004" y="235">BigQuery</text>
+  <text class="bs" x="1004" y="253">Storage Read API</text>
+
+  <!-- Lake -->
+  <rect class="zone" x="970" y="320" width="250" height="240" rx="10"/>
+  <text class="zl" x="988" y="342">ADLS GEN2 · container raw</text>
+  <rect class="box" x="990" y="360" width="210" height="50" rx="8"/>
+  <text class="bt" x="1004" y="380">delta/&lt;sys&gt;/&lt;table&gt;</text>
+  <text class="bs" x="1004" y="397">_delta_log · ingest_date=…</text>
+  <rect class="box" x="990" y="420" width="210" height="50" rx="8"/>
+  <text class="bt" x="1004" y="440">parquet/&lt;sys&gt;/&lt;table&gt;</text>
+  <text class="bs" x="1004" y="457">ingest_date=… · _SUCCESS</text>
+  <rect class="dash" x="990" y="480" width="210" height="50" rx="8"/>
+  <text class="bt" x="1004" y="500">_staging/&lt;run_id&gt;</text>
+  <text class="bs" x="1004" y="517">invisible until publish</text>
+
+  <!-- Edges -->
+  <path class="edge" d="M200 110 H258" marker-end="url(#arr)"/>
+  <path class="edge" d="M425 136 V158" marker-end="url(#arr)"/>
+  <path class="edge" d="M110 264 V318" marker-end="url(#arr)"/>
+  <path class="edge" d="M200 360 H225 V213 H273" marker-end="url(#arr)"/>
+  <path class="edge pre" d="M575 257 H620 V28 H1095 V48" marker-end="url(#arr)"/>
+  <text class="el" x="660" y="44">preflight: preview · schema · bounds · COUNT(*)</text>
+  <path class="edge" d="M575 345 H640 V110 H668" marker-end="url(#arr)"/>
+  <path class="edge" d="M790 136 V168" marker-end="url(#arr)"/>
+  <path class="edge" d="M970 170 H950 V295 H892" marker-end="url(#arr)"/>
+  <path class="edge" d="M890 310 H950 V505 H988" marker-end="url(#arr)"/>
+  <path class="edge" d="M670 380 H577" marker-end="url(#arr)"/>
+  <path class="edge" d="M575 400 H630 V600 H1095 V562" marker-end="url(#arr)"/>
+  <text class="el" x="650" y="622">verify row count → publish staged files → delete FlinkDeployment</text>
+  <path class="aux" d="M790 420 V438" marker-end="url(#arrm)"/>
+  <path class="aux" d="M340 420 V438" marker-end="url(#arrm)"/>
+  <path class="aux" d="M510 420 V438" marker-end="url(#arrm)"/>
+
+  <!-- Step badges -->
+  <circle class="badge-a" cx="110" cy="291" r="10"/><text class="bn" x="110" y="295">A</text>
+  <circle class="badge" cx="229" cy="110" r="10"/><text class="bn" x="229" y="114">1</text>
+  <circle class="badge" cx="850" cy="28" r="10"/><text class="bn" x="850" y="32">2</text>
+  <circle class="badge" cx="640" cy="230" r="10"/><text class="bn" x="640" y="234">3</text>
+  <circle class="badge" cx="812" cy="153" r="10"/><text class="bn" x="812" y="157">4</text>
+  <circle class="badge" cx="950" cy="232" r="10"/><text class="bn" x="950" y="236">5</text>
+  <circle class="badge" cx="950" cy="420" r="10"/><text class="bn" x="950" y="424">6</text>
+  <circle class="badge" cx="622" cy="380" r="10"/><text class="bn" x="622" y="384">7</text>
+  <circle class="badge" cx="860" cy="600" r="10"/><text class="bn" x="860" y="604">8</text>
+</svg>

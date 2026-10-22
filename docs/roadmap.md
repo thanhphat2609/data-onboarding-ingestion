@@ -1,29 +1,29 @@
 # Roadmap
 
-Last updated: 2026-10-21 · Current phase: **Phase 0: Project initialization**
+Last updated: 2026-10-22 · Current phase: **Phase 1: Non-prod environment, Web UI and Airflow**
 
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
 
 | Phase | Goal | Estimate | Status |
 |---|---|---|---|
-| [0](#phase-0-project-initialization) | Project initialization: architecture, plan, decisions | 1 week | **In progress** |
-| [1](#phase-1-local-environment-and-connector-spikes) | Local environment and connector spikes | 1 week | Not started |
-| [2](#phase-2-configuration-model-and-cli) | Configuration model, validation, rendering, CLI | 1–2 weeks | Not started |
-| [3](#phase-3-ingestion-runner) | Generic Flink ingestion runner | 2 weeks | Not started |
-| [4](#phase-4-control-plane-and-aks) | Control plane and AKS deployment | 2–3 weeks | Not started |
-| [5](#phase-5-scheduling-with-airflow) | Scheduling with Airflow | 1 week | Not started |
-| [6](#phase-6-web-ui) | Web UI | 2 weeks | Not started |
+| [0](#phase-0-project-initialization) | Project initialization: architecture, plan, decisions | 1 week | Open items: review, access |
+| [1](#phase-1-non-prod-environment-web-ui-and-airflow) | Non-prod environment, Web UI and Airflow (SQL Server) | 2–3 weeks | **In progress** |
+| [2](#phase-2-connector-spikes) | Connector spikes | 1 week | Not started |
+| [3](#phase-3-configuration-model-and-rendering) | Configuration model, validation, rendering, CLI | 1–2 weeks | Not started |
+| [4](#phase-4-ingestion-runner) | Generic Flink ingestion runner | 2 weeks | Not started |
+| [5](#phase-5-end-to-end-runs-through-airflow) | End-to-end runs through Airflow | 2 weeks | Not started |
+| [6](#phase-6-prod-environment-and-cicd) | Prod environment and CI/CD | 1–2 weeks | Blocked: prod VMs not available |
 | [7](#phase-7-hardening-and-extensions) | Hardening and extensions | Ongoing | Not started |
 
-Phases 5 and 6 depend only on Phase 4 and can run in parallel.
+Phase 2 can start as soon as the Phase 1 Flink cluster runs in non-prod. Phase 6 needs Phase 5 and the prod VMs.
 
 ```mermaid
 flowchart LR
-    P0[0 Init] --> P1[1 Spikes] --> P2[2 Config + CLI] --> P3[3 Runner] --> P4[4 Control plane + AKS]
-    P4 --> P5[5 Airflow]
-    P4 --> P6[6 Web UI]
-    P5 --> P7[7 Hardening]
-    P6 --> P7
+    P0[0 Init] --> P1[1 Non-prod + UI + Airflow] --> P3[3 Config + rendering] --> P4[4 Runner] --> P5[5 End-to-end runs]
+    P1 --> P2[2 Spikes] --> P3
+    P5 --> P6[6 Prod + CI/CD]
+    VM[(Prod VMs)] -.-> P6
+    P6 --> P7[7 Hardening]
 ```
 
 ---
@@ -39,9 +39,10 @@ flowchart LR
 - [x] Configuration spec draft for all four YAML kinds ([configuration-spec.md](configuration-spec.md))
 - [x] ADRs for key decisions ([adr/](adr/README.md))
 - [x] Repository conventions: English-only content, `.gitignore`, `.editorconfig`, [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [x] Re-plan: Flink on VMs instead of AKS, UI and Airflow first, non-prod on Codespaces ([ADR-0007](adr/0007-flink-standalone-session-cluster.md), [ADR-0008](adr/0008-airflow-dag-per-job.md), [ADR-0009](adr/0009-environments.md))
 - [ ] Answer the [open questions](#open-questions) or assign an owner and a due date to each
 - [ ] Review architecture, spec and ADRs; move accepted ADRs from `Proposed` to `Accepted`
-- [ ] Request access needed for Phase 1: dev ADLS Gen2 account, a test SQL Server/PostgreSQL database, a BigQuery test project and service account
+- [ ] Request access needed for Phase 2: dev ADLS Gen2 account, a test PostgreSQL database, a BigQuery test project and service account
 
 ### Deliverables
 
@@ -51,167 +52,226 @@ flowchart LR
 
 - Architecture, spec and ADRs are reviewed and merged to `main`.
 - Every open question is answered or has an owner and a due date.
-- Phase 1 access (storage account, test databases, BigQuery project) is granted or requested with an ETA.
+- Phase 2 access (storage account, test databases, BigQuery project) is granted or requested with an ETA.
 
 ---
 
-## Phase 1: Local environment and connector spikes
+## Phase 1: Non-prod environment, Web UI and Airflow
+
+**Goal:** a data engineer opens a Codespace, onboards a SQL Server connection and creates a job in the Web UI, and the job appears in Airflow as its own DAG that can submit work to the Flink JobManager.
+
+Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
+
+### Checklist
+
+**Infrastructure ([ADR-0009](adr/0009-environments.md))**
+
+- [ ] `infrastructure/non-prod/docker-compose.yml`: Web UI, Ingestion API, Airflow 3 (standalone, one container), PostgreSQL 16 (Airflow metadata and platform database), Flink 1.20 JobManager and TaskManager, SQL Server 2022 with a seeded sample database. *Written without the API; not yet verified in a Codespace*
+- [ ] Dockerfiles in `infrastructure/docker/`: `ui` written; `api` with the API; Airflow and Flink use upstream images until they need extra dependencies
+- [ ] `.devcontainer/devcontainer.json`: machine type (at least 4 cores / 16 GB), forwarded ports (Web UI, Airflow, Flink web UI), Compose started on start. *Written; not yet verified in a Codespace*
+- [ ] Shared volumes: `pipelines/connections/` and `pipelines/jobs/` between the API and Airflow; a run directory between Airflow and the JobManager
+- [ ] Airflow folder layout per repository: `code/airflow/dags/` mounted at `dags/ingestion/`, config files at `projects/ingestion/` ([ADR-0008](adr/0008-airflow-dag-per-job.md))
+- [x] Secrets from Codespaces secrets or `infrastructure/non-prod/.env` (never committed, generated by `bootstrap.sh`), referenced as `env://<VAR>`; `.env.example` committed
+- [x] `infrastructure/README.md`: start, stop and reset non-prod
+- [x] Pin Airflow and component versions (Airflow 3.3.2, Flink 1.20.5, PostgreSQL 16.15, SQL Server 2022 CU27, nginx 1.30.6)
+
+**Configuration (first cut)**
+
+- [x] `code/templates/sources/sqlserver.yaml` and `code/templates/sinks/adls_parquet.yaml`
+- [x] JSON Schemas in `code/templates/schemas/` for `Connection` and `IngestionJob`; template parameters are validated from the template itself
+
+**Ingestion API (`code/control-plane/`)**
+
+- [ ] FastAPI service; YAML files in `pipelines/connections/` and `pipelines/jobs/` are the store
+- [ ] Endpoints: templates and schemas, connections, jobs, invalid files
+- [ ] `POST /connections/{name}/test`: opens a connection with the given parameters and reports a clear error
+- [ ] SQL check with sqlglot: exactly one read-only statement ([ADR-0005](adr/0005-free-form-sql.md), basic rules only)
+- [ ] Preview: first 100 rows and column types of the user's query
+- [ ] YAML writer: validates against the schema, writes `pipelines/jobs/<name>.yaml`, rejects a name that differs from the file name or that changes an existing job
+- [ ] Airflow client: "Run now" and the latest runs of a DAG through the Airflow REST API
+- [ ] Saving a connection creates or resizes its pool `conn__<name>` through the Airflow REST API
+
+**Web UI (`code/ui/`)**
+
+- [x] React, Vite, TypeScript, shadcn/ui with a sidebar layout and dark mode; CodeMirror instead of Monaco to stay light
+- [x] In-browser mock of the Ingestion API so the UI works before the API exists
+- [x] Connections page: list, "New connection" form generated from the template, "Test connection" (mock)
+- [x] New job wizard: Source (connection, SQL editor, validation, preview) → Sink → Schedule → Review (form and live YAML side by side) → Save, Export YAML (validation and preview are mocked)
+- [x] Job name suggested as `<system>-<dataset>-<frequency>`, locked after the job is created
+- [x] Jobs page: latest runs, "Run now", links to the Airflow DAG and the Flink web UI; invalid files flagged (mock data until the API exists)
+
+**Airflow (`code/airflow/`, [ADR-0008](adr/0008-airflow-dag-per-job.md))**
+
+- [ ] `code/airflow/dags/ingestion_dag_factory.py`: one DAG `ingest__<name>` per job file, with schedule, owner, tags, `max_active_runs=1` and pool `conn__<connection>`. *Written and tested against a stub of the Airflow SDK; verify in a Codespace*
+- [ ] Pools created from the connection files (`code/airflow/scripts/sync_pools.py`, run on Airflow start). *Verify in a Codespace*
+- [ ] Invalid files skipped and logged with a one-line reason; other DAGs keep loading. *Tested against the stub*
+- [ ] Skeleton tasks `validate → submit → wait`: submit Flink's WordCount example through the JobManager REST API and wait for `FINISHED` (replaced by the runner in Phase 4). *Tested against a fake Flink REST API*
+
+### Deliverables
+
+`infrastructure/`, `.devcontainer/`, `code/control-plane/` (API), `code/ui/`, `code/airflow/`, first templates and schemas.
+
+### Exit criteria
+
+- A new Codespace starts every service healthy with no manual step besides setting secrets.
+- A data engineer creates a SQL Server connection (test passes) and a job in the UI; the saved YAML validates against the schema.
+- The DAG `ingest__<name>` appears in Airflow within one DAG-processor parse cycle (target: under one minute) after saving, without a restart.
+- "Run now" in the UI triggers the DAG, and the smoke Flink job reaches `FINISHED` on the TaskManager.
+- A broken job file does not stop other DAGs from loading and is flagged in the UI.
+- Usability test: two data team members each create a connection and a job in under five minutes.
+
+---
+
+## Phase 2: Connector spikes
 
 **Goal:** prove every risky building block works on Flink 1.20 before designing code around it.
 
 ### Checklist
 
-- [ ] `deploy/docker-compose.yml`: Flink 1.20 session cluster (JobManager + TaskManager), SQL Server 2022, PostgreSQL 16, seeded sample tables (small and ~10M rows)
-- [ ] Flink image with `flink-azure-fs-hadoop`, JDBC connector and drivers; write to the dev ADLS Gen2 account with `abfss://`
+- [ ] Flink image (`infrastructure/docker/flink/`) with `flink-azure-fs-hadoop`, JDBC connector and drivers; write to the dev ADLS Gen2 account with `abfss://`
+- [ ] Add PostgreSQL 16 with seeded sample tables (small and ~10M rows) to non-prod; add a ~10M-row table to the SQL Server seed
 - [ ] Spike: PostgreSQL → Parquet with partitioned scan (`scan.partition.*`, `scan.auto-commit=false`)
 - [ ] Spike: SQL Server → Parquet, including `applicationIntent=ReadOnly`
-- [ ] Spike: query mode with `JdbcSource` and a free-form query with JOIN and CTE
-- [ ] Spike: BigQuery source on Flink 1.20 (table read and materialized query)
+- [ ] Spike ([ADR-0010](adr/0010-pyflink-runner.md)): PyFlink job submitted through REST with `PythonDriver` on the session cluster; JobManager image with Python and PyFlink, size measured
+- [ ] Spike: query mode from PyFlink SQL: the JDBC table connector with a derived table `(<query>) AS q`, including a JOIN, an inlined CTE and a partitioned scan, on SQL Server and PostgreSQL; fallback: Java `JdbcSource` through the PyFlink gateway
+- [ ] Spike: BigQuery source on Flink 1.20 from PyFlink SQL DDL (table read and materialized query)
 - [ ] Spike: Delta commit of externally written Parquet files with delta-rs, including replacing one `ingest_date` partition atomically; compare with the `delta-flink` sink
 - [ ] Spike: Parquet timestamp encoding written by Flink is readable by Spark, pandas and Delta readers
-- [ ] Measure throughput (rows/s per slot) per source for sizing defaults
-- [ ] Pin connector and library versions; record results in `docs/spikes/phase-1.md`
+- [ ] Measure throughput (rows/s per slot) per source for sizing defaults and the TaskManager slot count
+- [ ] Pin connector and library versions; record results in `docs/spikes/phase-2.md`
 
 ### Deliverables
 
-`deploy/docker-compose.yml`, `docs/spikes/phase-1.md`, updated [ADR-0004](adr/0004-lake-layout-and-delta-commit.md) status, pinned version table in [architecture.md](architecture.md#11-technology-stack).
+Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-and-delta-commit.md) status, pinned version table in [architecture.md](architecture.md#11-technology-stack).
 
 ### Exit criteria
 
-- All three sources run as batch jobs that reach `FINISHED` on their own.
+- All three sources run as batch jobs on the non-prod session cluster and reach `FINISHED` on their own.
 - Output is readable by pandas and Spark.
 - The Delta strategy and the BigQuery connector choice are decided and recorded.
 
 ---
 
-## Phase 2: Configuration model and CLI
+## Phase 3: Configuration model and rendering
 
 **Goal:** turn YAML into a correct, reviewable Flink job definition without running anything.
 
 ### Checklist
 
-- [ ] JSON Schemas in `templates/schemas/` for `SourceTemplate`, `SinkTemplate`, `Connection`, `IngestionJob`
-- [ ] Templates: `sqlserver`, `postgresql`, `bigquery`, `adls_parquet`, `adls_delta`, `flinkdeployment.yaml.j2`
-- [ ] Python package `control-plane/` with Pydantic models generated from or checked against the schemas
-- [ ] SQL validator (sqlglot): read-only check, dialect blocklist, unique named columns, table vs query mode
-- [ ] AST-based rewrites: preview, count, bounds, partitioned query (T-SQL CTE hoisting, `ORDER BY` removal)
+- [ ] JSON Schemas for all four kinds and all templates: `sqlserver`, `postgresql`, `bigquery`, `adls_parquet`, `adls_delta`
+- [ ] Pydantic models generated from or checked against the schemas
+- [ ] Full SQL validator (sqlglot): read-only check, dialect blocklist, unique named columns, table vs query mode
+- [ ] AST-based rewrites: preview, count, bounds, partitioned query (CTE inlining into derived tables, `ORDER BY` removal)
 - [ ] Preflight against live sources: schema introspection, type mapping, bounds, `COUNT(*)`, BigQuery dry-run
-- [ ] Renderer: resolved job spec + `FlinkDeployment` manifest
+- [ ] Renderer: resolved job spec + Flink submission request
 - [ ] `ingestctl validate | preflight | render`
 - [ ] Golden tests: `tests/golden/<case>/{job.yaml, expected/}` for each source and both sinks
-- [ ] CI: lint, unit tests, validation of every file in `connections/` and `jobs/`
+- [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`
+- [ ] UI: PostgreSQL and BigQuery connection forms; preflight results (schema, row and byte estimates) in the job wizard
 
 ### Deliverables
 
-`templates/**`, `control-plane/` (library + CLI), `connections/` and `jobs/` examples, CI workflow.
+`code/templates/**`, `code/control-plane/` library and CLI, `pipelines/connections/` and `pipelines/jobs/` examples, CI workflow (tests only; no deployment).
 
 ### Exit criteria
 
-- `ingestctl render jobs/<example>.yaml` produces the expected output for all three sources and both sinks.
+- `ingestctl render pipelines/jobs/<example>.yaml` produces the expected output for all three sources and both sinks.
 - Every rejected SQL case in the test suite is rejected with an actionable message.
 - CI blocks an invalid connection or job file.
 
 ---
 
-## Phase 3: Ingestion runner
+## Phase 4: Ingestion runner
 
 **Goal:** one generic Flink job that executes any resolved job spec.
 
 ### Checklist
 
-- [ ] `runner/` Maven project (Java 17, Flink 1.20)
-- [ ] Spec loader and secret substitution from environment variables
-- [ ] Table mode (Flink SQL), query mode (`JdbcSource`), BigQuery source
+- [ ] `code/runner/` Python package (PyFlink 1.20, Python 3.11), Table API and SQL only
+- [ ] Spec loader and secret resolution (`env://`, later `kv://`) when the job graph is built
+- [ ] Table mode and query mode (JDBC connector over a table or a derived table), BigQuery source
 - [ ] Audit columns `ingest_date`, `_ingest_run_id`, `_ingested_at`
-- [ ] Parquet writer to staging; `_manifest.json` with row count, files and schema
+- [ ] Parquet writer to staging (filesystem connector); written rows counted from Parquet footers by the publisher
 - [ ] Prometheus metrics reporter
-- [ ] Container image with connectors, drivers and plugins
-- [ ] `ingestctl submit` against the local session cluster (Flink REST)
-- [ ] Integration tests against docker-compose sources
+- [ ] JobManager image with Python, PyFlink and the runner; connectors and drivers in the Flink image; TaskManager image unchanged
+- [ ] `ingestctl submit` against the non-prod session cluster (Flink REST)
+- [ ] Integration tests against the non-prod sources
 
 ### Deliverables
 
-`runner/`, runner image, integration test suite.
+`code/runner/`, JobManager and TaskManager images, integration test suite.
 
 ### Exit criteria
 
-- 3 sources × 2 formats run end to end from the CLI on the local environment.
+- 3 sources × 2 formats run end to end from the CLI on non-prod.
 - Manifest row counts equal source counts on seeded data.
 - A killed TaskManager makes the job fail cleanly; nothing is visible outside staging.
 
 ---
 
-## Phase 4: Control plane and AKS
+## Phase 5: End-to-end runs through Airflow
 
-**Goal:** a service that runs jobs on Kubernetes and owns the full run lifecycle.
+**Goal:** every run, scheduled or on demand, goes through its DAG from preflight to publish and is verified ([ADR-0008](adr/0008-airflow-dag-per-job.md)).
 
 ### Checklist
 
-- [ ] FastAPI service and PostgreSQL schema (`templates`, `connections`, `jobs`, `job_versions`, `runs`, `run_events`) with migrations
-- [ ] Endpoints: connections, jobs, `POST /jobs/{name}/runs`, runs, run events
-- [ ] Flink Kubernetes Operator installed with Helm on AKS; namespace, service account, Workload Identity, Key Vault CSI
-- [ ] Submitter (Kubernetes API) and run watcher (informer + timeout)
-- [ ] Publisher: verification policies, Parquet rename + `_SUCCESS`, Delta commit, staging cleanup, `FlinkDeployment` deletion
-- [ ] Concurrency limits per connection; one active run per `(job, ingest_date)`; retry policy
-- [ ] `ingestctl run <job> --wait` against the API
+- [ ] DAG tasks: preflight → render → submit → wait → verify → publish, using the `code/control-plane/` library
+- [ ] `wait` as a deferrable task polling the Flink REST API; `runtime.timeout` cancels the Flink job
+- [ ] A retry restarts the whole run, never a step in the middle
+- [ ] `ingest_date` from the logical date, override through `conf`; backfill through Airflow
+- [ ] Admission control: pool per connection and a pool for Flink task slots
+- [ ] Publisher: verification policies, Parquet rename + `_SUCCESS`, Delta commit, staging cleanup
+- [ ] `publish` emits an Airflow Asset for the table root URI; a sample downstream DAG schedules on it
+- [ ] Platform `runs` and `run_events` tables with migrations; run history in the UI (state, counts, duration, errors, links)
+- [ ] `ingestctl run <job> --wait` through Airflow
+- [ ] Alerting on failed runs
 - [ ] Grafana dashboard and Flink History Server
 
 ### Deliverables
 
-`control-plane/` service, `deploy/helm/`, dev environment on AKS.
+Complete DAG factory and tasks, `runs` schema, UI run history, dashboards.
 
 ### Exit criteria
 
-- A run goes through every state to `SUCCEEDED` on AKS.
+- A run goes through every step to success on non-prod.
 - Injected failures (count mismatch, timeout, TaskManager kill, bad credentials) end in the correct terminal state with a clear error.
 - Re-running the same `(job, ingest_date)` replaces the partition without duplicates.
-
----
-
-## Phase 5: Scheduling with Airflow
-
-**Goal:** scheduled and dependency-driven runs without building a scheduler ([ADR-0006](adr/0006-scheduling.md)).
-
-### Checklist
-
-- [ ] Airflow provider package with `IngestionRunOperator` (deferrable; triggers a run and waits for a terminal state)
-- [ ] `ingest_date` mapped from the DAG run's logical date; backfill works through Airflow
-- [ ] DAG generator for jobs with a `schedule` field
-- [ ] Alerting on failed scheduled runs
-
-### Exit criteria
-
-- A scheduled job runs daily for one week without manual intervention.
 - A backfill of seven `ingest_date` values produces seven partitions.
 
 ---
 
-## Phase 6: Web UI
+## Phase 6: Prod environment and CI/CD
 
-**Goal:** a user who does not know Flink can create and run a job in under five minutes.
+**Goal:** the platform runs on the two prod VMs and changes reach them without manual steps. Starts when the prod VMs exist.
 
 ### Checklist
 
-- [ ] Connection onboarding forms generated from template JSON Schemas, with "Test connection"
-- [ ] SQL editor with validation messages, preview, schema, row and byte estimates
-- [ ] Sink picker, YAML view and export
-- [ ] Run history: state, counts, duration, errors, links to Grafana and History Server
+- [ ] `infrastructure/prod/vm1/docker-compose.yml` (Web UI, API, Airflow, Flink JobManager) and `infrastructure/prod/vm2/docker-compose.yml` (TaskManagers)
+- [ ] Network: VM 2 → VM 1 JobManager RPC and blob server ports; fixed TaskManager port ranges; both VMs → sources and ADLS Gen2
+- [ ] Prod secret backend (`kv://`) and ADLS Gen2 identity
+- [ ] Platform and Airflow PostgreSQL in prod, with backups
+- [ ] CI/CD: build and push images, deploy each VM's Compose project
+- [ ] **Job file sync:** every new or changed file in `pipelines/jobs/` and `pipelines/connections/` is fetched to VM 1 automatically (sync on merge to `main` or a periodic Git pull), so Airflow picks it up without a manual deployment
+- [ ] Decide how the UI saves in prod: commit or pull request to Git, or direct write followed by a commit
 - [ ] Entra ID SSO; roles: DE admin (onboard connections) and user (create jobs on granted connections)
 
 ### Exit criteria
 
-- Usability test with two data team members passes the five-minute goal.
+- A scheduled job runs daily for one week on prod without manual intervention.
+- A job file merged to `main` becomes a DAG on prod within the agreed sync interval, with no manual step.
+- Restarting the TaskManager VM makes active runs fail and retry successfully.
 
 ---
 
 ## Phase 7: Hardening and extensions
 
-Prioritized after Phase 4 based on demand:
+Prioritized after Phase 6 based on demand:
 
 - Incremental loads by watermark column
 - Catalog registration (Unity Catalog or Hive Metastore) and post-publish data quality checks
 - Sinks: S3, GCS; sources: MySQL, Oracle
 - CDC with Flink CDC ([ADR-0003](adr/0003-own-yaml-model.md) revisit)
+- JobManager high availability; more TaskManager VMs
 - Delta compaction and retention of old `ingest_date` partitions
 - Cost dashboards
 
@@ -221,12 +281,13 @@ Prioritized after Phase 4 based on demand:
 
 | # | Question | Needed by | Owner | Answer |
 |---|---|---|---|---|
-| 1 | Do SQL Server and PostgreSQL sources have read-only replicas? If not, which run windows are allowed? | Phase 1 | | |
-| 2 | Is an AKS cluster available, or does one need to be provisioned? | Phase 4 | | |
-| 3 | Is there an existing Airflow deployment to integrate with? | Phase 5 | | |
-| 4 | Largest expected table (rows / GB)? Drives default sizing and timeouts. | Phase 1 | | |
+| 1 | Do SQL Server and PostgreSQL sources have read-only replicas? If not, which run windows are allowed? | Phase 2 | | |
+| 2 | Prod VMs: provider (Azure?), sizes, ETA, network access to sources and ADLS Gen2 | Phase 6 | | |
+| 3 | Prod secret backend: Azure Key Vault with VM managed identity, or another store? | Phase 6 | | |
+| 4 | Largest expected table (rows / GB)? Drives TaskManager size, slot count and timeouts. | Phase 2 | | |
 | 5 | Target catalog: Unity Catalog, Hive Metastore, or path-only for v1? | Phase 7 | | |
-| 6 | Retention for `ingest_date` partitions (keep all, or N days)? | Phase 4 | | |
+| 6 | Retention for `ingest_date` partitions (keep all, or N days)? | Phase 5 | | |
+| 7 | In prod, does the UI open a pull request for each job, or write directly and commit? | Phase 6 | | |
 
 ### Resolved
 
@@ -234,4 +295,9 @@ Prioritized after Phase 4 based on demand:
 |---|---|---|
 | Delta: full overwrite or history? | Keep history, partitioned by `ingest_date`; re-run replaces the day | 2026-10-21 |
 | Can users write free-form SQL? | Yes, read-only, including the data team ([ADR-0005](adr/0005-free-form-sql.md)) | 2026-10-21 |
-| How are runs scheduled? | On demand first, Airflow in Phase 5 ([ADR-0006](adr/0006-scheduling.md)) | 2026-10-21 |
+| Runner language? | PyFlink, Table API and SQL only, so future maintainers only need Python ([ADR-0010](adr/0010-pyflink-runner.md)) | 2026-10-22 |
+| Where does Flink run? | Standalone session cluster: JobManager with Airflow on VM 1, TaskManagers on VM 2; no Kubernetes ([ADR-0007](adr/0007-flink-standalone-session-cluster.md)) | 2026-10-22 |
+| How are runs scheduled and triggered? | Airflow from Phase 1, one DAG `ingest__<name>` per job file; on-demand runs also go through Airflow ([ADR-0008](adr/0008-airflow-dag-per-job.md)) | 2026-10-22 |
+| Is there an existing Airflow to integrate with? | No; the platform runs its own Airflow on VM 1 | 2026-10-22 |
+| Which environments? | Non-prod on GitHub Codespaces (one Compose project), prod on two VMs; no prod CI/CD until the VMs exist ([ADR-0009](adr/0009-environments.md)) | 2026-10-22 |
+| What comes first? | Web UI + Airflow + Flink JobManager (Phase 1), then spikes | 2026-10-22 |

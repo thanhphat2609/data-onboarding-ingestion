@@ -1,15 +1,17 @@
 # Configuration Spec
 
-Status: **Draft (Phase 0)**. This spec is formalized as JSON Schemas in Phase 2; until then this document is the reference.
+Status: **Draft (Phase 0)**. This spec is formalized as JSON Schemas in Phases 1 (SQL Server, `IngestionJob`) and 3 (all kinds); until then this document is the reference. The files under `code/templates/` are the source of truth for template contents; the snippets below are copies.
 
 All configuration is YAML. Every document has a `kind` and a `name`. Names are lowercase kebab-case (`^[a-z][a-z0-9-]{2,62}$`) and unique per kind. Templates are referenced as `<name>@<version>`.
 
 | Kind | Location | Owner |
 |---|---|---|
-| `SourceTemplate` | `templates/sources/<name>.yaml` | Platform team |
-| `SinkTemplate` | `templates/sinks/<name>.yaml` | Platform team |
-| `Connection` | `connections/<name>.yaml` | DE team |
-| `IngestionJob` | `jobs/<name>.yaml` or created through the API/UI | Users, data team |
+| `SourceTemplate` | `code/templates/sources/<name>.yaml` | Platform team |
+| `SinkTemplate` | `code/templates/sinks/<name>.yaml` | Platform team |
+| `Connection` | `pipelines/connections/<name>.yaml` | DE team |
+| `IngestionJob` | `pipelines/jobs/<name>.yaml`, written by hand or by the UI; one file = one Airflow DAG | Users, data team |
+
+The file name must equal `name` (`pipelines/connections/<name>.yaml`, `pipelines/jobs/<name>.yaml`); the API, `ingestctl validate` and CI reject a mismatch. A job's `name` cannot change once the job exists, because it is also the DAG id ([ADR-0008](adr/0008-airflow-dag-per-job.md)).
 
 ## Common types
 
@@ -17,7 +19,7 @@ All configuration is YAML. Every document has a `kind` and a `name`. Names are l
 |---|---|
 | `string`, `int`, `bool` | Scalars |
 | `enum` | One of `values` |
-| `secret_ref` | `kv://<vault-name>/<secret-name>`. Resolved at runtime only; never stored resolved |
+| `secret_ref` | `env://<VAR>` (non-prod) or `kv://<vault-name>/<secret-name>` (prod). Resolved at runtime only; never stored resolved |
 | `duration` | `30s`, `15m`, `2h` |
 | `list` | List of scalars |
 
@@ -44,7 +46,7 @@ Describes a source **type**. Adding a new database of an existing type does not 
 | `unsupported_types` | no | Types rejected at preflight with a `CAST` suggestion |
 | `runtime_env` | no | Environment variables the runner needs (mapped from secrets) |
 
-### `templates/sources/sqlserver.yaml`
+### `code/templates/sources/sqlserver.yaml`
 
 ```yaml
 kind: SourceTemplate
@@ -53,10 +55,7 @@ version: 1
 connector: jdbc
 dialect: tsql
 driver: com.microsoft.sqlserver.jdbc.SQLServerDriver
-url: >-
-  jdbc:sqlserver://{{ host }}:{{ port }};databaseName={{ database }};
-  encrypt={{ encrypt }};trustServerCertificate={{ trust_server_certificate }};
-  applicationIntent=ReadOnly
+url: "jdbc:sqlserver://{{ host }}:{{ port }};databaseName={{ database }};encrypt={{ encrypt }};trustServerCertificate={{ trust_server_certificate }};applicationIntent=ReadOnly"
 
 connection_params:
   host:                     { type: string, required: true }
@@ -106,7 +105,7 @@ runtime_env:
   SRC_PASSWORD: "{{ password }}"
 ```
 
-### `templates/sources/postgresql.yaml` (differences)
+### `code/templates/sources/postgresql.yaml` (differences)
 
 ```yaml
 kind: SourceTemplate
@@ -140,7 +139,7 @@ preflight:
 # uuid, json, jsonb, arrays -> STRING; timestamptz -> TIMESTAMP_LTZ(6)
 ```
 
-### `templates/sources/bigquery.yaml` (differences)
+### `code/templates/sources/bigquery.yaml` (differences)
 
 ```yaml
 kind: SourceTemplate
@@ -153,7 +152,7 @@ connection_params:
   project_id:      { type: string, required: true }
   location:        { type: string, default: US }
   billing_project: { type: string }
-  credentials:     { type: secret_ref, description: "Service account JSON; omit to use workload identity" }
+  credentials:     { type: secret_ref, description: "Service account JSON; omit to use the host identity (prod)" }
   temp_dataset:    { type: string, required: true, description: "Dataset for materialized query results" }
 
 read_params:
@@ -179,7 +178,7 @@ read_params:
 | `partition_by` | yes | Always starts with `ingest_date` in v1 |
 | `publish` | yes | Publisher strategy: `rename_partition` (Parquet) or `delta_commit` (Delta) |
 
-### `templates/sinks/adls_parquet.yaml`
+### `code/templates/sinks/adls_parquet.yaml`
 
 ```yaml
 kind: SinkTemplate
@@ -199,7 +198,7 @@ partition_by: [ingest_date]
 publish: rename_partition
 ```
 
-### `templates/sinks/adls_delta.yaml`
+### `code/templates/sinks/adls_delta.yaml`
 
 ```yaml
 kind: SinkTemplate
@@ -223,7 +222,7 @@ publish: delta_commit
 
 ## Connection
 
-One onboarded source. Created by the DE team through a pull request (or the UI in Phase 6).
+One onboarded source. Created by the DE team through the UI or a pull request.
 
 | Field | Required | Description |
 |---|---|---|
@@ -232,10 +231,10 @@ One onboarded source. Created by the DE team through a pull request (or the UI i
 | `template` | yes | `<source-template>@<version>` |
 | `owner` | yes | Team responsible for the connection |
 | `params` | yes | Values for the template's `connection_params` |
-| `limits.max_concurrent_runs` | no | Default `2` |
+| `limits.max_concurrent_runs` | no | Default `2`; becomes the size of the Airflow pool `conn__<name>` |
 | `limits.max_partition_num` | no | Caps `read.partition_num` for every job on this connection |
 | `limits.run_window` | no | Allowed local time window, for example `"19:00-06:00"` |
-| `access.groups` | no | Entra ID groups allowed to create jobs on this connection |
+| `access.groups` | no | Entra ID groups allowed to create jobs on this connection (enforced once SSO exists, Phase 6) |
 
 ```yaml
 kind: Connection
@@ -246,7 +245,7 @@ params:
   host: crm-ag-listener.internal
   database: CRM
   username: svc_ingest_ro
-  password: kv://kv-dataplatform/crm-sqlserver-ro
+  password: kv://kv-dataplatform/crm-sqlserver-ro   # non-prod: env://CRM_SQLSERVER_PASSWORD
 limits:
   max_concurrent_runs: 2
   max_partition_num: 8
@@ -262,7 +261,7 @@ access:
 | Field | Required | Description |
 |---|---|---|
 | `kind` | yes | `IngestionJob` |
-| `name` | yes | |
+| `name` | yes | Immutable; DAG id is `ingest__<name>`. Recommended pattern `<system>-<dataset>-<frequency>` |
 | `owner` | yes | Team or person accountable for the job |
 | `connection` | yes | `Connection` name |
 | `source.query` | yes | Read-only SQL in the connection's dialect |
@@ -271,12 +270,28 @@ access:
 | `sink.params` | yes | Values for the sink template's `params` |
 | `verify.row_count` | no | `exact` (default), `tolerance`, or `skip` |
 | `verify.tolerance_pct` | with `tolerance` | Allowed relative difference, for example `0.1` |
-| `runtime.parallelism` | no | Default derived from `partition_num` |
-| `runtime.taskmanager` | no | `{ cpu, memory }`, default `{ cpu: 2, memory: 4g }` |
+| `runtime.parallelism` | no | Default derived from `partition_num`; capped by the free task slots of the session cluster |
 | `runtime.timeout` | no | Default `2h` |
 | `runtime.retries` | no | Default `1` |
-| `schedule` | no | Cron expression; used from Phase 5 by the Airflow DAG generator, ignored before |
-| `tags` | no | Free-form labels |
+| `schedule` | no | Cron expression or Airflow preset (`@daily`); becomes the DAG schedule. Omitted: manual runs only |
+| `tags` | no | Free-form labels; added to the DAG tags |
+
+### DAG mapping
+
+The DAG factory turns each job into one DAG ([ADR-0008](adr/0008-airflow-dag-per-job.md)):
+
+| Job field | DAG setting |
+|---|---|
+| `name` | `dag_id = ingest__<name>` |
+| `schedule` | `schedule`; `None` when omitted |
+| `owner` | DAG owner, tag `owner:<owner>` |
+| `connection` | Tag `connection:<connection>`, pool `conn__<connection>` |
+| connection template | Tag `source:<template>` |
+| `tags` | DAG tags, plus `ingestion` |
+| `runtime.retries`, `runtime.timeout` | Whole-run retries and timeout |
+| `sink` | Outlet `Asset(<table root URI>)` on the `publish` task, for downstream DAGs |
+
+Every DAG uses `max_active_runs=1` and `catchup=False`.
 
 ```yaml
 kind: IngestionJob
@@ -312,45 +327,32 @@ tags: [crm, daily]
 
 ### Run request
 
-`POST /jobs/{name}/runs` or `ingestctl run <name>`:
+"Run now" in the UI, `POST /jobs/{name}/runs` or `ingestctl run <name>`. All of them trigger the DAG `ingest__<name>` through the Airflow REST API and pass the fields below as DAG run `conf`:
 
 | Field | Default | Description |
 |---|---|---|
-| `ingest_date` | Today in `Asia/Ho_Chi_Minh` | Target partition; any past date enables backfill |
-| `triggered_by` | Caller identity | `user:<id>`, `airflow:<dag_id>`, `cli:<user>` |
+| `ingest_date` | Logical date of the DAG run in `Asia/Ho_Chi_Minh` | Target partition; any past date enables backfill |
+| `triggered_by` | Caller identity | `user:<id>`, `schedule`, `cli:<user>` |
 | `dry_run` | `false` | Validate, preflight and render only |
 
 ---
 
 ## Rendered output (per run, never edited by hand)
 
-- **Resolved job spec** (`job.yaml`): all templates expanded, preflight results inlined (schema, bounds, expected count), secrets still as environment variable placeholders.
-- **`FlinkDeployment` manifest** rendered from `templates/runtime/flinkdeployment.yaml.j2`.
+- **Resolved job spec** (`job.yaml`): all templates expanded, preflight results inlined (schema, bounds, expected count), secrets still as references. Written to the run directory shared by Airflow and the Flink JobManager.
+- **Flink submission request** for the session cluster ([ADR-0007](adr/0007-flink-standalone-session-cluster.md)), rendered with the defaults in `code/templates/runtime/`.
 
 Both are stored in `runs` for audit and can be re-submitted with `ingestctl submit --run <run_id>`.
 
-```yaml
-apiVersion: flink.apache.org/v1beta1
-kind: FlinkDeployment
-metadata:
-  name: ingest-<run_id>
-  namespace: ingestion
-  labels:
-    ingestion/run-id: <run_id>
-    ingestion/job: crm-customers-daily
-spec:
-  image: <registry>/ingestion-runner:<version>
-  flinkVersion: v1_20
-  serviceAccount: flink-ingestion
-  flinkConfiguration:
-    execution.runtime-mode: BATCH
-    taskmanager.numberOfTaskSlots: "2"
-  jobManager:  { resource: { cpu: 1, memory: 2048m } }
-  taskManager: { resource: { cpu: 2, memory: 4096m } }
-  podTemplate: {}   # mounts the job spec ConfigMap and Key Vault secrets as env
-  job:
-    jarURI: local:///opt/flink/usrlib/ingestion-runner.jar
-    args: ["--spec", "/opt/spec/job.yaml"]
-    parallelism: 8
-    upgradeMode: stateless
+```http
+POST /jars/<flink-python-jar-id>/run
+Content-Type: application/json
+
+{
+  "entryClass": "org.apache.flink.client.python.PythonDriver",
+  "parallelism": 8,
+  "programArgsList": ["-py", "/opt/ingestion/runner/main.py", "--spec", "/opt/ingestion/runs/<run_id>/job.yaml"]
+}
 ```
+
+The response contains the Flink job id; the `wait` task polls `GET /jobs/<job_id>` until the job reaches a terminal state.

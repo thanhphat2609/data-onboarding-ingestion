@@ -1,0 +1,21 @@
+{
+  // Non-prod environment on GitHub Codespaces (ADR-0009). Services are defined in infrastructure/non-prod/.
+  "name": "data-onboarding-ingestion (non-prod)",
+  "image": "mcr.microsoft.com/devcontainers/base:3.0.9-noble",
+  "features": {
+    // Docker-in-Docker keeps relative bind mounts in the Compose file working.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" }
+  },
+  "hostRequirements": { "cpus": 4, "memory": "16gb", "storage": "32gb" },
+  "forwardPorts": [3000, 8080, 8081],
+  "portsAttributes": {
+    "3000": { "label": "Web UI", "onAutoForward": "notify" },
+    "8080": { "label": "Airflow", "onAutoForward": "silent" },
+    "8081": { "label": "Flink web UI", "onAutoForward": "silent" },
+    "1433": { "label": "SQL Server", "onAutoForward": "ignore" },
+    "5173": { "label": "Web UI (dev server)", "onAutoForward": "notify" }
+  },
+  "postCreateCommand": "bash infrastructure/non-prod/bootstrap.sh",
+  "postStartCommand": "docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build"
+}

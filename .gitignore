@@ -32,7 +32,7 @@ node_modules/
 coverage/
 
 # Local Flink and docker data
-deploy/**/data/
+infrastructure/**/data/
 *.log
 
 # IDE / OS

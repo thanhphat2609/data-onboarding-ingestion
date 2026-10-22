@@ -1,0 +1,7 @@
+# Build contexts use the repository root; send only what the images need.
+*
+!code/ui/
+!code/templates/
+!infrastructure/docker/
+code/ui/node_modules/
+code/ui/dist/

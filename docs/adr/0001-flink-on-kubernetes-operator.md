@@ -1,6 +1,6 @@
 # ADR-0001: Apache Flink 1.20 on the Flink Kubernetes Operator, one cluster per run
 
-- Status: Proposed
+- Status: Superseded by [ADR-0007](0007-flink-standalone-session-cluster.md)
 - Date: 2026-10-21
 
 ## Context

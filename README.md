@@ -1,12 +1,38 @@
 # data-onboarding-ingestion
 
-Self-service ingestion platform built on Apache Flink. The DE team onboards a source once from a YAML template (SQL Server, PostgreSQL, BigQuery). Users then submit a free-form read-only `SELECT`, and the platform compiles it into a bounded Flink batch job. The job lands Parquet or Delta on ADLS Gen2, partitioned by `ingest_date`, and every run is verified by row-count reconciliation before it is published.
+Self-service ingestion platform built on Apache Flink. The DE team onboards a source once from a YAML template (SQL Server, PostgreSQL, BigQuery). Users then define a job in the Web UI (or as YAML) with a free-form read-only `SELECT`; each job becomes its own Airflow DAG, and every run is compiled into a bounded Flink batch job. The job lands Parquet or Delta on ADLS Gen2, partitioned by `ingest_date`, and every run is verified by row-count reconciliation before it is published.
 
 ![Architecture](docs/assets/architecture.svg)
 
 ## Status
 
-**Phase 0: Project initialization.** Design documents only; no runnable code yet. See the [roadmap](docs/roadmap.md).
+**Phase 1: Non-prod environment, Web UI and Airflow.** The Web UI runs against a mock API; the non-prod Compose stack is in `infrastructure/`. See the [roadmap](docs/roadmap.md).
+
+## Repository layout
+
+```
+.devcontainer/            GitHub Codespaces definition (starts non-prod)
+.github/                  CI workflows (Phase 3)
+code/                     everything the platform team writes and deploys
+  ui/                     Web UI (React)
+  control-plane/          shared library, Ingestion API (FastAPI), ingestctl CLI
+  airflow/                DAG factory; mounted on Airflow at dags/ingestion/
+  runner/                 generic Flink job (PyFlink)
+  templates/              versioned source and sink templates, JSON Schemas
+    sources/  sinks/  runtime/  schemas/
+pipelines/                YAML owned by users and the DE team, one file per object
+  connections/            onboarded sources (connections/<name>.yaml)
+  jobs/                   ingestion jobs; jobs/<name>.yaml becomes DAG ingest__<name>
+infrastructure/           Dockerfiles and Docker Compose per environment
+  docker/  non-prod/  prod/
+docs/                     architecture, roadmap, configuration spec, ADRs
+```
+
+Details and reasons: [architecture §12](docs/architecture.md#12-repository-layout).
+
+## Getting started
+
+Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod stack starts by itself: Web UI on port 3000, Airflow on 8080, Flink on 8081. See [infrastructure/README.md](infrastructure/README.md) to run it elsewhere.
 
 ## Documentation
 
@@ -23,5 +49,6 @@ Self-service ingestion platform built on Apache Flink. The DE team onboards a so
 - Sources: SQL Server, PostgreSQL, BigQuery
 - Destination: Azure Data Lake Storage Gen2
 - Formats: Parquet, Delta Lake
-- Execution: Apache Flink 1.20 in batch mode on the Flink Kubernetes Operator (AKS)
-- Triggering: CLI / API on demand; Airflow scheduling in Phase 5
+- Execution: Apache Flink 1.20 in batch mode on a standalone session cluster (JobManager on VM 1, TaskManagers on VM 2)
+- Orchestration: Apache Airflow, one DAG `ingest__<name>` per job file; on-demand runs from the UI or CLI
+- Environments: non-prod on GitHub Codespaces (one Docker Compose project), prod on two VMs; container definitions in `infrastructure/`

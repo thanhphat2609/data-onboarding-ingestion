@@ -18,14 +18,14 @@ All repository content is written in **English**: code, comments, docs, YAML, co
 
 ## Configuration files
 
-- Never commit secret values. Connections reference secrets as `kv://<vault>/<secret>`.
+- Never commit secret values. Connections reference secrets as `env://<VAR>` (non-prod) or `kv://<vault>/<secret>` (prod).
 - Template changes that break existing connections or jobs require a new template `version`.
 - YAML: 2-space indentation, lowercase kebab-case names.
 
-## Code style (from Phase 2)
+## Code style (from Phase 1)
 
 | Area | Tooling |
 |---|---|
-| Python (control plane) | Python 3.12, `ruff` (lint + format), `mypy`, `pytest` |
-| Java (runner) | Java 17, Maven, Spotless (google-java-format), JUnit 5 |
-| TypeScript (UI) | ESLint, Prettier |
+| Python (control plane, Airflow) | Python 3.12, `ruff` (lint + format), `mypy`, `pytest` |
+| Python (runner) | Python 3.11 (PyFlink 1.20 limit), same tooling; Table API and SQL only, no Python UDFs |
+| TypeScript (UI) | `tsc` (strict), `oxlint` |

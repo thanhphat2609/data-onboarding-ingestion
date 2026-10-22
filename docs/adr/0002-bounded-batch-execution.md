@@ -9,10 +9,10 @@ A run must stop by itself once it has read everything the user's query returns, 
 
 ## Decision
 
-1. **Bounded by design.** Jobs run with `execution.runtime-mode: BATCH` and use only bounded sources (JDBC scan or `JdbcSource`, BigQuery Storage Read on a table or materialized query). The job reaches `FINISHED` when all splits are read. No component polls the source for remaining data.
+1. **Bounded by design.** Jobs run with `execution.runtime-mode: BATCH` and use only bounded sources (JDBC table scan of a table or of the user's query as a derived table, BigQuery Storage Read on a table or materialized query). The job reaches `FINISHED` when all splits are read. No component polls the source for remaining data.
 2. **Fixed cut-off at preflight.** The control plane captures `run_ts`, partition bounds (`MIN/MAX`) and the expected row count before submission and passes them as constants. An optional `snapshot_column` adds `<= run_ts` to the query. SQL Server reads use `applicationIntent=ReadOnly`; BigQuery queries are materialized into a temporary table.
-3. **Detection by the control plane.** A Kubernetes informer watches `FlinkDeployment.status.jobStatus.state`; the Flink REST API is a fallback. Each run has a hard timeout (default `2h`).
-4. **Verification before publishing.** Written rows (runner manifest, cross-checked with Parquet footers) are compared with the expected count using the job's policy (`exact`, `tolerance`, `skip`). Output stays in staging until verification passes.
+3. **Detection by the orchestrator.** The Airflow `wait` task polls the Flink REST API (`GET /jobs/{job_id}`) through a deferrable trigger ([ADR-0008](0008-airflow-dag-per-job.md)). Each run has a hard timeout (default `2h`); on timeout the Flink job is cancelled and the run ends as `TIMED_OUT`.
+4. **Verification before publishing.** Written rows (summed from the Parquet footers of the staged files, [ADR-0010](0010-pyflink-runner.md)) are compared with the expected count using the job's policy (`exact`, `tolerance`, `skip`). Output stays in staging until verification passes.
 
 ## Consequences
 

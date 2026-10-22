@@ -1,6 +1,6 @@
 # ADR-0004: Lake layout by `ingest_date` and staged publishing
 
-- Status: Proposed (Delta strategy pending Phase 1 spike)
+- Status: Proposed (Delta strategy pending Phase 2 spike)
 - Date: 2026-10-21
 
 ## Context
@@ -28,7 +28,7 @@ raw/delta/<system>/<schema>/<table>/   (Delta table, partition column ingest_dat
 - The runner is independent of the Delta library version; Delta concerns live in the publisher.
 - Requires hierarchical namespace on the storage account.
 - The Parquet replace is "delete old directory, rename new directory": a reader listing between the two operations can see an empty partition. Readers that need strict atomicity should use Delta.
-- Phase 1 must confirm: Parquet written by Flink (timestamp encoding, schema) is accepted in a Delta commit and readable by Spark and pandas; the delta-rs API commits externally written files with partition values on ADLS Gen2.
+- The Phase 2 spikes must confirm: Parquet written by Flink (timestamp encoding, schema) is accepted in a Delta commit and readable by Spark and pandas; the delta-rs API commits externally written files with partition values on ADLS Gen2.
 
 ## Alternatives considered
 

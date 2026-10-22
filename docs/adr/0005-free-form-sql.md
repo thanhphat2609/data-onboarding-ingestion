@@ -11,8 +11,8 @@ Users, including the data team, need joins, CTEs and aggregations, not only "sel
 
 - Users write free-form SQL in the **connection's own dialect**.
 - The control plane parses it with **sqlglot** and accepts only a single read-only query. It rejects DML, DDL, `SELECT ... INTO`, multiple statements, procedure calls, and a per-dialect blocklist (`OPENROWSET`, `OPENQUERY`, `xp_*`, `dblink`, `pg_sleep`, `pg_read_file`, ...). Output columns must be unique and named.
-- **Mode selection:** a single-table projection and filter runs in *table mode* (Flink JDBC table connector with filter push-down); everything else runs in *query mode* (`JdbcSource` with the SQL text). BigQuery queries are materialized to a temporary table.
-- **All derived queries are built by transforming the AST**, never by string concatenation. T-SQL needs CTE hoisting and removal of top-level `ORDER BY`.
+- **Mode selection:** a single-table projection and filter runs in *table mode* (Flink JDBC table connector with filter push-down); everything else runs in *query mode*: the SQL text becomes a derived table `(<query>) AS q` for the same connector, with CTEs inlined by sqlglot ([ADR-0010](0010-pyflink-runner.md)). BigQuery queries are materialized to a temporary table.
+- **All derived queries are built by transforming the AST**, never by string concatenation. Because every variant wraps the query as a derived table, non-recursive CTEs are inlined into derived tables (`SELECT * FROM (WITH ...)` is invalid in T-SQL) and a top-level `ORDER BY` is removed.
 - Partitioning in query mode is opt-in through an output `partition_column` (numeric or date) and becomes `BETWEEN ? AND ?` ranges.
 - **The read-only database principal is the primary control.** SQL validation is a second layer that also gives users early, readable errors.
 

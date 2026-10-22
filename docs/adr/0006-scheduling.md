@@ -1,6 +1,6 @@
 # ADR-0006: On-demand runs first, Airflow for scheduling
 
-- Status: Proposed
+- Status: Superseded by [ADR-0008](0008-airflow-dag-per-job.md)
 - Date: 2026-10-21
 
 ## Context

@@ -13,11 +13,10 @@ deploy.sh                Run on a VM by the Deploy workflow: checkout <sha>, bui
 | Stage | Trigger | What runs |
 |---|---|---|
 | 1. CI | Pull request or push to `main` | Ruff, mypy, YAML file validation, UI typecheck/lint/build, Compose files, every image built (not pushed) |
-| 2a. Deploy | CI green on a push to `main`, code changed | VM 1 then VM 2: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune images and week-old build cache |
-| 2b. Pipelines sync | CI green on a push to `main`, only `pipelines/` changed | VM 1: `git checkout <sha>` and pool sync; Airflow picks up the files by itself |
-| Manual | Actions → Deploy → Run workflow | Like 2a for any commit; option `no_cache` rebuilds every layer |
+| 2a. Deploy (approval) | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run, then VM 1 and VM 2: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune images and week-old build cache |
+| 2b. Pipelines sync | CI green on a push to `main` that changed only `pipelines/` | VM 1: `git checkout <sha>` and pool sync, no rebuild; Airflow picks up the files by itself |
 
-No approval step: a push to `main` that passes CI goes to prod. A failing CI run stops it, and a pull request with the required checks (below) is the place to review changes before they reach `main`.
+**Approving a deploy** = running the workflow: Actions → Deploy → Run workflow → branch `main` → optionally a commit (`sha`, default the latest `main`) and `no_cache` → Run. A commit without a green CI run is refused. Anyone with write access to the repository can run it. When code changed, the push itself deploys nothing; the CI-triggered Deploy run only notes that a manual run is needed.
 
 The build reuses the Docker layer cache (rebuilding PyFlink every time takes minutes) but always pulls newer base images; old images and build cache are pruned after each deploy. Use `no_cache` when a build looks stale.
 

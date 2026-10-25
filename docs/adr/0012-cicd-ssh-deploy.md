@@ -1,4 +1,4 @@
-# ADR-0012: Two-stage CI/CD: checks, then an automatic deploy that builds on the VMs
+# ADR-0012: Two-stage CI/CD: checks, then a manually approved deploy that builds on the VMs
 
 - Status: Proposed
 - Date: 2026-10-26
@@ -6,7 +6,7 @@
 
 ## Context
 
-Prod is two VMs running Docker Compose ([ADR-0009](0009-environments.md)). The team wants every change checked automatically, and a push to `main` that passes the checks to reach prod without extra clicks. A merged job file should become a DAG without a manual step (roadmap Phase 6), and without rebuilding images. There is no container registry yet, and the VMs don't exist yet, so the pipeline has to be ready before it can deploy anything.
+Prod is two VMs running Docker Compose ([ADR-0009](0009-environments.md)). The team wants every change checked automatically, and code to reach prod only when a person approves, without the setup of GitHub environments. A merged job file should become a DAG without a manual step (roadmap Phase 6), and without rebuilding images. There is no container registry yet, and the VMs don't exist yet, so the pipeline has to be ready before it can deploy anything.
 
 ## Decision
 
@@ -16,13 +16,13 @@ Prod is two VMs running Docker Compose ([ADR-0009](0009-environments.md)). The t
 - Web UI: typecheck, lint and production build.
 - Docker: shell scripts parse, every Compose file passes `docker compose config`, every image builds. Nothing is pushed.
 
-**Stage 2, Deploy** (`.github/workflows/deploy.yml`), after CI succeeds on a push to `main`:
+**Stage 2, Deploy** (`.github/workflows/deploy.yml`):
 
-- The workflow compares the target commit with the commit VM 1 runs.
-- Code changed: VM 1 and then VM 2 run `infrastructure/prod/deploy.sh` over SSH: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, then prune dangling images and build cache older than a week. The script is taken from the target commit (`git show <sha>:...`), not from the old checkout.
-- Only `pipelines/` changed: VM 1 checks out the commit and resyncs the Airflow pools. Airflow parses the new files by itself.
-- A manual run deploys any commit and can rebuild without the layer cache.
-- No approval step and no GitHub environments (decided 2026-10-26 to keep it simple). Review happens in pull requests, before `main`.
+- **Approval = running the workflow** (Actions → Deploy → Run workflow on `main`). It refuses a commit that is not on `main` or has no green CI run.
+- Then VM 1 and VM 2 run `infrastructure/prod/deploy.sh` over SSH: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, then prune dangling images and build cache older than a week. The script is taken from the target commit (`git show <sha>:...`), not from the old checkout.
+- After CI succeeds on a push to `main`, the workflow also runs on its own and compares the commit with the one VM 1 runs. If only `pipelines/` changed, VM 1 checks out the commit and resyncs the Airflow pools without a click (no rebuild); Airflow parses the new files by itself. If code changed, it only notes that a manual run is needed.
+- The manual run can pick any commit on `main` (rollback) and rebuild without the layer cache.
+- No GitHub environments (decided 2026-10-26 to keep the setup small).
 - The whole workflow is off until the repository variable `PROD_DEPLOY_ENABLED` is `true`.
 
 Images are built **on the VMs** from the checkout; no registry. GitHub holds only SSH access; application secrets stay in files on the VMs (later Key Vault).
@@ -39,5 +39,6 @@ Images are built **on the VMs** from the checkout; no registry. GitHub holds onl
 ## Alternatives considered
 
 - **Build in CI, push to a registry (GHCR or ACR), pull on the VMs.** Faster deploys and identical images, but needs a registry and credentials on the VMs. Kept as the next step once deploy time matters.
-- **Approval before each deploy (GitHub environment with required reviewers).** Written first, then dropped on 2026-10-26: one more click per change for a small team; review in pull requests covers it. Adding `environment: production` to the deploy job brings it back.
+- **GitHub environment with required reviewers.** Written first, dropped on 2026-10-26: extra setup per repository. It gives named approvers and an audit trail; adding `environment: production` to the deploy job brings it back.
+- **Approval by an Issue comment** (third-party action) or **by pull request review**. Rejected: a third-party action with write access to issues, or a second person for every change.
 - **Self-hosted runner on the VMs from the start.** Possible, and the fallback when SSH from GitHub is blocked; SSH keeps the VMs free of a long-running agent.

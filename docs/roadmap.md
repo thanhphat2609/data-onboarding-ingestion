@@ -190,6 +190,8 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 - [ ] Golden tests: `tests/golden/<case>/{job.yaml, expected/}` for each source and both sinks
 - [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`
 - [ ] UI: PostgreSQL and BigQuery connection forms; preflight results (schema, row and byte estimates) in the job wizard
+- [ ] Table browser: `GET /connections/{name}/tables` lists schemas, tables and estimated row counts (SQL Server: `INFORMATION_SCHEMA` + `sys.partitions`); in the Source step, picking a table writes `SELECT <columns> FROM <table>`
+- [ ] Sink path suggested as `<system>/<schema>/<table>` from the connection and the query, like the job name; still editable
 
 ### Deliverables
 

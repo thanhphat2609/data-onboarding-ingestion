@@ -2,6 +2,16 @@
 
 Last updated: 2026-10-26 · Current phase: **Phase 2: Connector spikes**
 
+> **Where we left off (2026-10-26).** Phase 1 closed (`v0.1.0`). Phase 2 groundwork is on `main` but nothing has run in Docker yet: Flink image (builds in CI), PostgreSQL and MySQL test sources, spike jobs in `code/spikes/phase-2/`, results template in [spikes/phase-2.md](spikes/phase-2.md). CI runs on every push (green); the Deploy workflow is ready but off until the VMs exist ([ADR-0012](adr/0012-cicd-ssh-deploy.md)).
+>
+> **Next, in order:**
+> 1. In a Codespace: `git pull`, `bash infrastructure/non-prod/bootstrap.sh` (adds the new source passwords), `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`; every service healthy, including `postgres-source` and `mysql-source`.
+> 2. Phase 1 carry-over checks: connection + job in the UI, DAG appears, "Run now" → WordCount `FINISHED`, broken file flagged.
+> 3. JDBC spikes (`code/spikes/phase-2/README.md`): table mode on all three sources, `check_parquet.py`, query mode, REST submission with `PythonDriver`; then `seed-large.sh` and the 10M-row throughput runs. Fill [spikes/phase-2.md](spikes/phase-2.md) as you go.
+> 4. Needed from the user, as Codespaces secrets: ADLS Gen2 dev account + service principal (spike 8), BigQuery test project + service account JSON (spike 9).
+> 5. After that: Delta commit spike, Parquet timestamps in Spark, then the REST API source ADR.
+> 6. When the prod VMs exist: [infrastructure/prod/README.md](../infrastructure/prod/README.md) (VM setup, GitHub secrets, `PROD_DEPLOY_ENABLED=true`), deploying data-onboarding-agent first.
+
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
 
 | Phase | Goal | Estimate | Status |

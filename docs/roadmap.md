@@ -77,7 +77,7 @@ Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
 
 **Infrastructure ([ADR-0009](adr/0009-environments.md))**
 
-- [ ] `infrastructure/non-prod/docker-compose.yml`: Web UI, Ingestion API, Airflow 3 (standalone, one container), PostgreSQL 16 (Airflow metadata and platform database), Flink 1.20 JobManager and TaskManager, SQL Server 2022 with a seeded sample database. *Written, including the API; not yet verified in a Codespace*
+- [ ] `infrastructure/non-prod/docker-compose.yml`: Web UI, Ingestion API, Airflow 3 (standalone, one container), PostgreSQL 16 (Airflow metadata and platform database), Flink 1.20 JobManager and TaskManager, SQL Server 2022 with a seeded sample database. *Written, including the API; Codespace verification in progress (2026-10-25: fixed the undeclared `flink-examples` volume)*
 - [ ] Dockerfiles in `infrastructure/docker/`: `ui` and `api` written; Airflow and Flink use upstream images until they need extra dependencies
 - [ ] `.devcontainer/devcontainer.json`: machine type (at least 4 cores / 16 GB), forwarded ports (Web UI, Ingestion API, Airflow, Flink web UI), Compose started on start. *Written; not yet verified in a Codespace*
 - [ ] Shared volumes: `pipelines/connections/` and `pipelines/jobs/` between the API and Airflow; a run directory between Airflow and the JobManager. *Written; verify in a Codespace*

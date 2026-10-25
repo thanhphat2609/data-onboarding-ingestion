@@ -212,3 +212,5 @@ volumes:
   postgres-data:   # local-db profile only
   airflow-logs:
   sqlserver-data:
+  # Filled from the JobManager image on first start; Airflow reads the smoke-job JAR from it.
+  flink-examples:

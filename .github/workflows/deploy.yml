@@ -1,8 +1,6 @@
-# Stage 2 of CI/CD (ADR-0012): after CI passes on main, deploy to the prod VMs over SSH.
-# - Code changes: environment `production` (required reviewers), one approval -> VM 1, then VM 2:
-#   git checkout <sha>, docker compose build --pull, up -d, prune old images and build cache.
-# - Only pipelines/ changed: environment `production-pipelines` (no reviewers) -> VM 1: git checkout + pool sync,
-#   so a merged job file becomes a DAG without a manual step (roadmap Phase 6).
+# Stage 2 of CI/CD (ADR-0012): every push to main that passes CI deploys to the prod VMs over SSH, no approval.
+# - Code changes -> VM 1, then VM 2: git checkout <sha>, docker compose build --pull, up -d, prune old images and cache.
+# - Only pipelines/ changed -> VM 1: git checkout + pool sync, no rebuild; the DAGs update on their own.
 # Disabled until the repository variable PROD_DEPLOY_ENABLED is "true" (the VMs don't exist yet).
 name: Deploy
 
@@ -85,7 +83,6 @@ jobs:
     needs: plan
     if: needs.plan.outputs.scope == 'pipelines'
     runs-on: ubuntu-24.04
-    environment: production-pipelines
     steps:
       - *ssh-setup
       - name: Sync pipelines/ on VM 1
@@ -100,8 +97,6 @@ jobs:
     needs: plan
     if: needs.plan.outputs.scope == 'full'
     runs-on: ubuntu-24.04
-    # One approval covers both VMs.
-    environment: production
     env:
       SHA: ${{ needs.plan.outputs.sha }}
       NO_CACHE: ${{ inputs.no_cache && '--no-cache' || '' }}

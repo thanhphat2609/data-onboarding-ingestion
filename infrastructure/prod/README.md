@@ -10,12 +10,14 @@ deploy.sh                Run on a VM by the Deploy workflow: checkout <sha>, bui
 
 ## How a change reaches prod
 
-| Stage | Trigger | What runs | Approval |
-|---|---|---|---|
-| 1. CI | Pull request or push to `main` | Ruff, mypy, YAML file validation, UI typecheck/lint/build, Compose files, every image built (not pushed) | No |
-| 2a. Deploy | CI green on `main`, code changed | VM 1 then VM 2: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune images and week-old build cache | **Yes**, environment `production` |
-| 2b. Pipelines sync | CI green on `main`, only `pipelines/` changed | VM 1: `git checkout <sha>` and pool sync; Airflow picks up the files by itself | No, environment `production-pipelines` |
-| Manual | Actions → Deploy → Run workflow | Like 2a for any commit; option `no_cache` rebuilds every layer | Yes |
+| Stage | Trigger | What runs |
+|---|---|---|
+| 1. CI | Pull request or push to `main` | Ruff, mypy, YAML file validation, UI typecheck/lint/build, Compose files, every image built (not pushed) |
+| 2a. Deploy | CI green on a push to `main`, code changed | VM 1 then VM 2: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune images and week-old build cache |
+| 2b. Pipelines sync | CI green on a push to `main`, only `pipelines/` changed | VM 1: `git checkout <sha>` and pool sync; Airflow picks up the files by itself |
+| Manual | Actions → Deploy → Run workflow | Like 2a for any commit; option `no_cache` rebuilds every layer |
+
+No approval step: a push to `main` that passes CI goes to prod. A failing CI run stops it, and a pull request with the required checks (below) is the place to review changes before they reach `main`.
 
 The build reuses the Docker layer cache (rebuilding PyFlink every time takes minutes) but always pulls newer base images; old images and build cache are pruned after each deploy. Use `no_cache` when a build looks stale.
 
@@ -42,15 +44,6 @@ Secrets and variables are per repository: set them here **and** in data-onboardi
 | `PROD_SSH_PORT` | `22` | SSH port of the VMs (default `22`) |
 
 Variables are not secret: they show in the logs. Anything secret goes in Secrets.
-
-### Environments (Settings → Environments → New environment)
-
-An environment is a named deployment target with its own protection rules. A job that says `environment: production` stops and waits until one of the required reviewers clicks **Review deployments → Approve** on the workflow run. That is the approval of stage 2.
-
-| Name | Settings to tick |
-|---|---|
-| `production` | **Required reviewers**: the people who may approve deploys (one approval is enough). **Prevent self-review** if the person who pushes should not approve their own change. **Deployment branches and tags**: *Selected branches* → `main` |
-| `production-pipelines` | No reviewers (job and connection files sync on their own). **Deployment branches and tags**: *Selected branches* → `main` |
 
 ### Branch protection (Settings → Rules → Rulesets, or Branches)
 

@@ -283,8 +283,8 @@ Complete DAG factory and tasks, `runs` schema, UI run history, dashboards.
 - [ ] Network: VM 2 → VM 1 JobManager RPC and blob server ports; fixed TaskManager port ranges; both VMs → sources and ADLS Gen2
 - [ ] Prod secret backend (`kv://`) and ADLS Gen2 identity
 - [ ] Platform and Airflow PostgreSQL in prod, with backups: the shared server of the agent stack on VM 1 ([ADR-0011](adr/0011-shared-postgresql-server.md)); `vm1` Compose joins `data-platform`; `pg_dump` per database
-- [ ] CI/CD ([ADR-0012](adr/0012-cicd-ssh-deploy.md)): CI on every push and pull request; deploy after approval (environment `production`) over SSH, building on each VM. *Workflows written; set the GitHub secrets, variables and environments from [infrastructure/prod/README.md](../infrastructure/prod/README.md), then `PROD_DEPLOY_ENABLED=true`*
-- [ ] **Job file sync:** every new or changed file in `pipelines/jobs/` and `pipelines/connections/` is fetched to VM 1 automatically (sync on merge to `main` or a periodic Git pull), so Airflow picks it up without a manual deployment. *Written: `pipelines/`-only changes deploy without approval (environment `production-pipelines`)*
+- [ ] CI/CD ([ADR-0012](adr/0012-cicd-ssh-deploy.md)): CI on every push and pull request; every push to `main` that passes CI deploys over SSH, building on each VM; no approval step. *Workflows written; set the GitHub secrets and variables from [infrastructure/prod/README.md](../infrastructure/prod/README.md), then `PROD_DEPLOY_ENABLED=true`*
+- [ ] **Job file sync:** every new or changed file in `pipelines/jobs/` and `pipelines/connections/` is fetched to VM 1 automatically (sync on merge to `main` or a periodic Git pull), so Airflow picks it up without a manual deployment. *Written: `pipelines/`-only changes sync to VM 1 without a rebuild*
 - [ ] Decide how the UI saves in prod: commit or pull request to Git, or direct write followed by a commit
 - [ ] Entra ID SSO; roles: DE admin (onboard connections) and user (create jobs on granted connections)
 

@@ -21,32 +21,40 @@ The build reuses the Docker layer cache (rebuilding PyFlink every time takes min
 
 ## GitHub setup (Settings of this repository)
 
-**Secrets** (Settings → Secrets and variables → Actions → Secrets):
+Secrets and variables are per repository: set them here **and** in data-onboarding-agent. Both repositories can use the same SSH key and deploy user.
 
-| Name | Value |
+### Secrets (Settings → Secrets and variables → Actions → New repository secret)
+
+| Name | Example | What it is |
+|---|---|---|
+| `PROD_SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----`<br>`b3BlbnNzaC1rZXktdjEAAAAA...`<br>`-----END OPENSSH PRIVATE KEY-----` | Whole content of the private key file, including the BEGIN/END lines. Made once for CI only: `ssh-keygen -t ed25519 -C github-deploy -f deploy_key -N ""`; `deploy_key.pub` goes into `/home/deploy/.ssh/authorized_keys` on both VMs |
+| `PROD_SSH_KNOWN_HOSTS` | `20.198.10.15 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK...`<br>`20.198.10.16 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM...` | Output of `ssh-keyscan -t ed25519 20.198.10.15 20.198.10.16` (one line per VM); compare the fingerprints with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on each VM |
+| `PROD_SSH_USER` | `deploy` | Linux user on the VMs, member of the `docker` group |
+| `PROD_VM1_HOST` | `20.198.10.15` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
+| `PROD_VM2_HOST` | `20.198.10.16` or `vm2.dataplatform.example.com` | Address of VM 2 that GitHub's runners can reach |
+
+### Variables (same page → Variables tab → New repository variable)
+
+| Name | Example | What it is |
+|---|---|---|
+| `PROD_DEPLOY_ENABLED` | `true` | Anything else (or unset) turns the Deploy workflow off. Leave unset until the VMs are ready |
+| `PROD_REPO_DIR` | `/opt/data-onboarding-ingestion` | Where the repository is cloned on both VMs (this is also the default) |
+| `PROD_SSH_PORT` | `22` | SSH port of the VMs (default `22`) |
+
+Variables are not secret: they show in the logs. Anything secret goes in Secrets.
+
+### Environments (Settings → Environments → New environment)
+
+An environment is a named deployment target with its own protection rules. A job that says `environment: production` stops and waits until one of the required reviewers clicks **Review deployments → Approve** on the workflow run. That is the approval of stage 2.
+
+| Name | Settings to tick |
 |---|---|
-| `PROD_SSH_PRIVATE_KEY` | Private key of a key pair made for CI only (`ssh-keygen -t ed25519 -C github-deploy -f deploy_key`); the public key goes into `~/.ssh/authorized_keys` of the deploy user on both VMs |
-| `PROD_SSH_KNOWN_HOSTS` | Output of `ssh-keyscan -p <port> <vm1> <vm2>`, checked against the VMs' real host keys |
-| `PROD_SSH_USER` | Deploy user on the VMs, for example `deploy` |
-| `PROD_VM1_HOST` | Address of VM 1 reachable from GitHub runners |
-| `PROD_VM2_HOST` | Address of VM 2 reachable from GitHub runners |
+| `production` | **Required reviewers**: the people who may approve deploys (one approval is enough). **Prevent self-review** if the person who pushes should not approve their own change. **Deployment branches and tags**: *Selected branches* → `main` |
+| `production-pipelines` | No reviewers (job and connection files sync on their own). **Deployment branches and tags**: *Selected branches* → `main` |
 
-**Variables** (same page → Variables):
+### Branch protection (Settings → Rules → Rulesets, or Branches)
 
-| Name | Value |
-|---|---|
-| `PROD_DEPLOY_ENABLED` | `true` once the VMs are ready; until then the Deploy workflow does nothing |
-| `PROD_REPO_DIR` | Checkout path on the VMs (default `/opt/data-onboarding-ingestion`) |
-| `PROD_SSH_PORT` | SSH port (default `22`) |
-
-**Environments** (Settings → Environments):
-
-| Name | Settings |
-|---|---|
-| `production` | Required reviewers: the people who approve deploys; deployment branches: `main` only |
-| `production-pipelines` | No reviewers; deployment branches: `main` only |
-
-**Branch protection** for `main` (Settings → Branches or Rulesets): require a pull request and the CI checks `Python (lint, types, YAML files)`, `Web UI (types, lint, build)` and `Compose files and image builds`.
+For `main`: require a pull request before merging, and require the status checks `Python (lint, types, YAML files)`, `Web UI (types, lint, build)` and `Compose files and image builds`.
 
 Application secrets (database passwords, source passwords, Airflow keys) are **not** GitHub secrets: they live in `.env` and `sources.env` on the VMs, and later in Key Vault (`kv://`).
 

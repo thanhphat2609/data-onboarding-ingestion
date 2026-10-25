@@ -1,6 +1,10 @@
 # Non-prod: every service in one Compose project (ADR-0009). Sized for a 4-core / 16 GB Codespace.
 # Start: docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 # Secrets come from infrastructure/non-prod/.env (created by bootstrap.sh, never committed).
+#
+# Metadata DB (ADR-0011): Airflow uses the platform's shared PostgreSQL server, hosted by the
+# data-onboarding-agent stack, over the Docker network `data-platform` (both stacks on one host, as on VM 1).
+# Without that stack, COMPOSE_PROFILES=local-db in .env (bootstrap.sh's default) starts a local PostgreSQL instead.
 
 name: ingestion-nonprod
 
@@ -22,8 +26,10 @@ services:
     mem_limit: 64m
     restart: unless-stopped
 
+  # Standalone only (profile local-db): same databases and roles as the shared server.
   postgres:
     image: postgres:16.15-alpine
+    profiles: [local-db]
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run bootstrap.sh to create .env}
       AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
@@ -49,7 +55,8 @@ services:
       - "8080:8080"
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres/airflow
+      # `postgres` = the shared server on data-platform, or the local-db container. METADATA_DB_HOST overrides it.
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?}@${METADATA_DB_HOST:-postgres}:5432/airflow
       AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?}
       AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -76,9 +83,12 @@ services:
       - airflow-logs:/opt/airflow/logs
       # Flink example JARs for the Phase 1 smoke job (filled by the JobManager image).
       - flink-examples:/opt/flink-examples:ro
+    networks: [default, platform]
     depends_on:
+      # Only with the local-db profile; the shared server is another Compose project, so start.sh waits for it.
       postgres:
         condition: service_healthy
+        required: false
       flink-jobmanager:
         condition: service_healthy
     healthcheck:
@@ -170,7 +180,14 @@ services:
         condition: service_healthy
     restart: "no"
 
+networks:
+  default: {}
+  # Created by the data-onboarding-agent stack (or by bootstrap.sh when running standalone).
+  platform:
+    name: data-platform
+    external: true
+
 volumes:
-  postgres-data:
+  postgres-data:   # local-db profile only
   airflow-logs:
   sqlserver-data:

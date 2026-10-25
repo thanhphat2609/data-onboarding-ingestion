@@ -16,6 +16,7 @@ Statuses: `Proposed` → `Accepted` | `Rejected`, later optionally `Superseded b
 | [0008](0008-airflow-dag-per-job.md) | Airflow orchestrates runs, one DAG per ingestion job | Proposed |
 | [0009](0009-environments.md) | Non-prod on GitHub Codespaces, prod on two VMs | Proposed |
 | [0010](0010-pyflink-runner.md) | PyFlink runner, Table API and SQL only | Proposed (pending Phase 2 spikes) |
+| [0011](0011-shared-postgresql-server.md) | One shared PostgreSQL server, hosted by the onboarding agent stack | Proposed |
 
 ## Template
 

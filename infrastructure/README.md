@@ -18,7 +18,18 @@ Airflow and Flink use the upstream images until they need extra dependencies.
 | Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod |
 | Flink web UI | 8081 | Session cluster: one JobManager, one TaskManager with 4 slots |
 | SQL Server | 1433 | Sample database `crm`, read-only login `svc_ingest_ro` |
-| PostgreSQL | internal | Databases `airflow` and `platform` |
+| PostgreSQL | internal | Databases `airflow` and `platform`. The shared server or a local container, see below |
+
+### Metadata DB: shared server or local
+
+The platform has one PostgreSQL server ([ADR-0011](../docs/adr/0011-shared-postgresql-server.md)). The [data-onboarding-agent](https://github.com/thanhphat2609/data-onboarding-agent) stack hosts it, with the databases `airflow`, `platform` and the agent's own `onboarding_agent`. Airflow joins that stack's Docker network `data-platform` and connects to `postgres:5432`. That only works when both stacks run on one Docker host.
+
+| Where | `COMPOSE_PROFILES` in `.env` | Metadata DB |
+|---|---|---|
+| Standalone Codespace of this repo (default) | `local-db` | Local `postgres` container in this project, created as before |
+| Both stacks on one host (demo VM 1: Agent + Airflow + Flink JobManager) | empty | The agent stack's server. Start that stack first, and set `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` to its `POSTGRES_AIRFLOW_PASSWORD` / `POSTGRES_PLATFORM_PASSWORD` |
+
+`bootstrap.sh` creates the `data-platform` network if it is missing, writes `COMPOSE_PROFILES=local-db` into a new `.env`, and adds it to an `.env` from before this change. In an existing Codespace, run `bash infrastructure/non-prod/bootstrap.sh` once after pulling. In shared mode Airflow waits up to 5 minutes for the server (`start.sh`), because Compose can't wait for a service of another project.
 
 ### Start
 
@@ -60,8 +71,8 @@ docker compose -f infrastructure/non-prod/docker-compose.yml down -v   # deletes
 rm -rf infrastructure/non-prod/data
 ```
 
-`.env` is kept; delete it as well to get new secrets.
+`.env` is kept; delete it as well to get new secrets. In shared mode `down -v` doesn't touch the metadata DB, which lives in the agent stack's volume. Reset it there, or drop and recreate the `airflow` database.
 
 ### Memory
 
-Limits per service add up to about 7.5 GB: Airflow 2 GB, SQL Server 2 GB, TaskManager 1.75 GB, JobManager 1.25 GB, PostgreSQL 256 MB, UI 64 MB. Use the 4-core / 16 GB Codespace machine type, and stop the Codespace when idle.
+Limits per service add up to about 7.5 GB: Airflow 2 GB, SQL Server 2 GB, TaskManager 1.75 GB, JobManager 1.25 GB, PostgreSQL 256 MB (local-db only), UI 64 MB. Use the 4-core / 16 GB Codespace machine type, and stop the Codespace when idle.

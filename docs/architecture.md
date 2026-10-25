@@ -95,7 +95,7 @@ Airflow 3 orchestrates every run ([ADR-0008](adr/0008-airflow-dag-per-job.md)):
 
 ### 3.4 Metadata DB
 
-One PostgreSQL 16 instance holds two databases: Airflow's metadata database and the platform database. Connections, jobs and templates are YAML files, versioned in Git, not database tables. The platform database records run details from Phase 5:
+One PostgreSQL 16 instance holds two databases for this repository: Airflow's metadata database and the platform database. The instance is the platform's shared server, hosted by the data-onboarding-agent stack on VM 1, which also keeps its own database there. Airflow reaches it over the Docker network `data-platform`, and a standalone non-prod Codespace runs a local instance instead ([ADR-0011](adr/0011-shared-postgresql-server.md)). Connections, jobs and templates are YAML files, versioned in Git, not database tables. The platform database records run details from Phase 5:
 
 | Table | Content |
 |---|---|
@@ -257,8 +257,8 @@ Details: [ADR-0007](adr/0007-flink-standalone-session-cluster.md), [ADR-0009](ad
 
 | Environment | Layout | Storage | Purpose |
 |---|---|---|---|
-| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL, Flink JobManager + TaskManager, SQL Server test source | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
-| **prod** | VM 1: Web UI, API, Airflow, Flink JobManager. VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
+| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, SQL Server test source | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
+| **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, plus the data-onboarding-agent stack with the shared PostgreSQL server. VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
 
 Prod network requirements: VM 2 reaches the JobManager RPC and blob server ports on VM 1; TaskManager ports use fixed ranges; both VMs reach the sources and ADLS Gen2.
 
@@ -282,7 +282,7 @@ infrastructure/
 | Orchestration and scheduling | Apache Airflow 3 |
 | Runner | PyFlink 1.20 (Python 3.11), Table API and SQL only |
 | Control plane | Python 3.12, FastAPI, Pydantic v2, Jinja2, sqlglot, delta-rs, pyarrow |
-| Metadata | PostgreSQL 16 (Airflow metadata + platform database) |
+| Metadata | PostgreSQL 16 (Airflow metadata + platform database), on the shared server of the agent stack ([ADR-0011](adr/0011-shared-postgresql-server.md)) |
 | UI | React, Vite, TypeScript, Tailwind CSS, shadcn/ui (Base UI), CodeMirror 6, TanStack Query, nginx (static serving) |
 | Infrastructure | Docker Compose; GitHub Codespaces (non-prod); two VMs (prod) |
 | Secrets / identity | Environment variables (non-prod); Azure Key Vault (prod, to be confirmed); Entra ID SSO |

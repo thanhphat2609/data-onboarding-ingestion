@@ -2,6 +2,9 @@
 *
 !code/ui/
 !code/templates/
+!code/control-plane/
 !infrastructure/docker/
 code/ui/node_modules/
 code/ui/dist/
+**/.venv/
+**/__pycache__/

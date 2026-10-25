@@ -1,6 +1,8 @@
+import { httpApi } from '@/api/http'
 import { mockApi } from '@/api/mock'
 import type { IngestionApi } from '@/api/types'
 
-// Only the mock exists until the Ingestion API (FastAPI) is built; an HTTP client with
-// the same interface replaces it then.
-export const api: IngestionApi = mockApi
+// The container sets apiMode "http" in config.js; the dev server uses the mock unless VITE_API_MODE=http.
+const mode = window.__APP_CONFIG__?.apiMode || import.meta.env.VITE_API_MODE || 'mock'
+
+export const api: IngestionApi = mode === 'http' ? httpApi : mockApi

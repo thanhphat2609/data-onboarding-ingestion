@@ -23,7 +23,28 @@ services:
     environment:
       AIRFLOW_URL: ${AIRFLOW_URL:-}
       FLINK_URL: ${FLINK_URL:-}
+      # nginx proxies /api to the api service; "mock" keeps the in-browser mock instead.
+      API_MODE: ${API_MODE:-http}
     mem_limit: 64m
+    restart: unless-stopped
+
+  # Ingestion API (code/control-plane): reads and writes pipelines/, tests sources, triggers DAGs in Airflow.
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/api/Dockerfile
+    image: ingestion-api:dev
+    ports:
+      - "8000:8000"
+    environment:
+      AIRFLOW_API_URL: http://airflow:8080
+      # Secrets referenced by connections as env://<VAR>. Add a line here for each new reference.
+      CRM_SQLSERVER_RO_PASSWORD: ${CRM_SQLSERVER_RO_PASSWORD:?}
+    volumes:
+      # The same files Airflow reads: a saved job becomes a DAG without a restart (ADR-0008).
+      - ../../pipelines:/workspace/pipelines
+      - ../../code/templates:/workspace/code/templates:ro
+    mem_limit: 256m
     restart: unless-stopped
 
   # Standalone only (profile local-db): same databases and roles as the shared server.

@@ -3,7 +3,8 @@
 Everything that defines containers and environments ([ADR-0009](../docs/adr/0009-environments.md)).
 
 ```
-docker/ui/       Web UI image (static build served by nginx)
+docker/ui/       Web UI image (static build served by nginx, proxies /api)
+docker/api/      Ingestion API image (code/control-plane)
 non-prod/        One Compose project with every service, for GitHub Codespaces
 prod/            Phase 6, once the prod VMs exist
 ```
@@ -14,7 +15,8 @@ Airflow and Flink use the upstream images until they need extra dependencies.
 
 | Service | Port | Notes |
 |---|---|---|
-| Web UI | 3000 | Uses the in-browser mock API until the Ingestion API exists |
+| Web UI | 3000 | Calls the Ingestion API through `/api` on the same port; `API_MODE=mock` in `.env` switches back to the in-browser mock |
+| Ingestion API | 8000 | Writes `pipelines/connections/` and `pipelines/jobs/`, which Airflow reads; docs at `/api/docs`. Every `env://<VAR>` a connection uses must be listed in its `environment` |
 | Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod |
 | Flink web UI | 8081 | Session cluster: one JobManager, one TaskManager with 4 slots |
 | SQL Server | 1433 | Sample database `crm`, read-only login `svc_ingest_ro` |

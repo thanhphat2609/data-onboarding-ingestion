@@ -13,6 +13,7 @@
     "3000": { "label": "Web UI", "onAutoForward": "notify" },
     "8080": { "label": "Airflow", "onAutoForward": "silent" },
     "8081": { "label": "Flink web UI", "onAutoForward": "silent" },
+    "8000": { "label": "Ingestion API", "onAutoForward": "silent" },
     "1433": { "label": "SQL Server", "onAutoForward": "ignore" },
     "5173": { "label": "Web UI (dev server)", "onAutoForward": "notify" }
   },

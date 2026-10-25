@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-10-22 · Current phase: **Phase 1: Non-prod environment, Web UI and Airflow**
+Last updated: 2026-10-25 · Current phase: **Phase 1: Non-prod environment, Web UI and Airflow**
 
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
 
@@ -66,8 +66,8 @@ Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
 
 **Infrastructure ([ADR-0009](adr/0009-environments.md))**
 
-- [ ] `infrastructure/non-prod/docker-compose.yml`: Web UI, Ingestion API, Airflow 3 (standalone, one container), PostgreSQL 16 (Airflow metadata and platform database), Flink 1.20 JobManager and TaskManager, SQL Server 2022 with a seeded sample database. *Written without the API; not yet verified in a Codespace*
-- [ ] Dockerfiles in `infrastructure/docker/`: `ui` written; `api` with the API; Airflow and Flink use upstream images until they need extra dependencies
+- [ ] `infrastructure/non-prod/docker-compose.yml`: Web UI, Ingestion API, Airflow 3 (standalone, one container), PostgreSQL 16 (Airflow metadata and platform database), Flink 1.20 JobManager and TaskManager, SQL Server 2022 with a seeded sample database. *Written, including the API; not yet verified in a Codespace*
+- [ ] Dockerfiles in `infrastructure/docker/`: `ui` and `api` written; Airflow and Flink use upstream images until they need extra dependencies
 - [ ] `.devcontainer/devcontainer.json`: machine type (at least 4 cores / 16 GB), forwarded ports (Web UI, Airflow, Flink web UI), Compose started on start. *Written; not yet verified in a Codespace*
 - [ ] Shared volumes: `pipelines/connections/` and `pipelines/jobs/` between the API and Airflow; a run directory between Airflow and the JobManager
 - [ ] Airflow folder layout per repository: `code/airflow/dags/` mounted at `dags/ingestion/`, config files at `projects/ingestion/` ([ADR-0008](adr/0008-airflow-dag-per-job.md))
@@ -83,19 +83,19 @@ Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
 
 **Ingestion API (`code/control-plane/`)**
 
-- [ ] FastAPI service; YAML files in `pipelines/connections/` and `pipelines/jobs/` are the store
-- [ ] Endpoints: templates and schemas, connections, jobs, invalid files
-- [ ] `POST /connections/{name}/test`: opens a connection with the given parameters and reports a clear error
-- [ ] SQL check with sqlglot: exactly one read-only statement ([ADR-0005](adr/0005-free-form-sql.md), basic rules only)
-- [ ] Preview: first 100 rows and column types of the user's query
-- [ ] YAML writer: validates against the schema, writes `pipelines/jobs/<name>.yaml`, rejects a name that differs from the file name or that changes an existing job
-- [ ] Airflow client: "Run now" and the latest runs of a DAG through the Airflow REST API
-- [ ] Saving a connection creates or resizes its pool `conn__<name>` through the Airflow REST API
+- [ ] FastAPI service; YAML files in `pipelines/connections/` and `pipelines/jobs/` are the store ([README](../code/control-plane/README.md)). *Written; tested against fakes; verify in a Codespace*
+- [x] Endpoints: templates and schemas, connections, jobs, invalid files
+- [ ] `POST /connections/{name}/test`: opens a connection with the given parameters and reports a clear error (pymssql; warns when the login can write). *Written; tested against fakes; verify in a Codespace*
+- [x] SQL check with sqlglot: exactly one read-only statement, named and unique columns ([ADR-0005](adr/0005-free-form-sql.md), basic rules only)
+- [ ] Preview: first 100 rows and column types of the user's query (`sys.dm_exec_describe_first_result_set`). *Written; tested against fakes; verify in a Codespace*
+- [x] YAML writer: validates against the schema, writes `pipelines/jobs/<name>.yaml`, rejects a name that differs from the file name or that changes an existing job; atomic writes
+- [ ] Airflow client: "Run now" (unpauses the DAG first) and the latest runs of a DAG through the Airflow REST API. *Written; tested against fakes; verify in a Codespace*
+- [ ] Saving a connection creates or resizes its pool `conn__<name>` through the Airflow REST API. *Written; tested against fakes; verify in a Codespace*
 
 **Web UI (`code/ui/`)**
 
 - [x] React, Vite, TypeScript, shadcn/ui with a sidebar layout and dark mode; CodeMirror instead of Monaco to stay light
-- [x] In-browser mock of the Ingestion API so the UI works before the API exists
+- [x] In-browser mock of the Ingestion API so the UI works before the API exists; the container uses the real API (`API_MODE=http`, nginx proxies `/api`), the dev server keeps the mock unless `VITE_API_MODE=http`
 - [x] Connections page: list, "New connection" form generated from the template, "Test connection" (mock)
 - [x] New job wizard: Source (connection, SQL editor, validation, preview) → Sink → Schedule → Review (form and live YAML side by side) → Save, Export YAML (validation and preview are mocked)
 - [x] Job name suggested as `<system>-<dataset>-<frequency>`, locked after the job is created

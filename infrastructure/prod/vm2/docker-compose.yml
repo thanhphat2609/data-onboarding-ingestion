@@ -1,0 +1,26 @@
+# Prod VM 2 (ADR-0007): Flink TaskManagers of the session cluster on VM 1.
+# Host networking, so the TaskManager advertises the VM's own address and fixed ports to the JobManager.
+# Deployed by infrastructure/prod/deploy.sh (ADR-0012). DRAFT until the prod VMs exist (roadmap Phase 6).
+
+name: ingestion-prod
+
+services:
+  flink-taskmanager:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/flink/Dockerfile
+      target: taskmanager
+    image: ingestion-flink-taskmanager:prod
+    command: taskmanager
+    network_mode: host
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: ${FLINK_JOBMANAGER_ADDRESS:?private address of VM 1}
+        jobmanager.rpc.port: 6123
+        taskmanager.host: ${FLINK_TASKMANAGER_ADDRESS:?private address of VM 2}
+        taskmanager.bind-host: 0.0.0.0
+        taskmanager.rpc.port: 6122
+        taskmanager.data.port: 6121
+        taskmanager.numberOfTaskSlots: ${TASKMANAGER_SLOTS:-8}
+        taskmanager.memory.process.size: ${TASKMANAGER_MEMORY:-8g}
+    restart: unless-stopped

@@ -7,7 +7,7 @@ docker/ui/       Web UI image (static build served by nginx, proxies /api)
 docker/api/      Ingestion API image (code/control-plane)
 docker/flink/    Flink image: JDBC connector and drivers, Parquet, ADLS plugin; target jobmanager adds PyFlink
 non-prod/        One Compose project with every service, for GitHub Codespaces
-prod/            Phase 6, once the prod VMs exist
+prod/            Two VMs, deployed by GitHub Actions (draft until the VMs exist, see prod/README.md)
 ```
 
 Airflow uses the upstream image; Flink uses `docker/flink/` from Phase 2.

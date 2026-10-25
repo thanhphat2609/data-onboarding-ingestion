@@ -1,0 +1,122 @@
+# Stage 2 of CI/CD (ADR-0012): after CI passes on main, deploy to the prod VMs over SSH.
+# - Code changes: environment `production` (required reviewers), one approval -> VM 1, then VM 2:
+#   git checkout <sha>, docker compose build --pull, up -d, prune old images and build cache.
+# - Only pipelines/ changed: environment `production-pipelines` (no reviewers) -> VM 1: git checkout + pool sync,
+#   so a merged job file becomes a DAG without a manual step (roadmap Phase 6).
+# Disabled until the repository variable PROD_DEPLOY_ENABLED is "true" (the VMs don't exist yet).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to deploy (default latest main)
+        required: false
+      no_cache:
+        description: Rebuild images without the Docker layer cache
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SSH_USER: ${{ secrets.PROD_SSH_USER }}
+  SSH_PORT: ${{ vars.PROD_SSH_PORT || '22' }}
+  REPO_DIR: ${{ vars.PROD_REPO_DIR || '/opt/data-onboarding-ingestion' }}
+
+jobs:
+  plan:
+    if: >-
+      vars.PROD_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      scope: ${{ steps.plan.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - &ssh-setup
+        name: SSH key
+        env:
+          SSH_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+      - name: Compare with the commit VM 1 runs
+        id: plan
+        env:
+          HOST: ${{ secrets.PROD_VM1_HOST }}
+          TARGET: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          sha=$(git rev-parse "$TARGET")
+          deployed=$(ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" "git -C '$REPO_DIR' rev-parse HEAD")
+          changed=$(git diff --name-only "$deployed" "$sha" 2>/dev/null || echo "<unknown commit on VM 1>")
+          printf 'Deployed %s, target %s\nChanged files:\n%s\n' "$deployed" "$sha" "$changed"
+          if [[ "$MANUAL" == true ]]; then
+            scope=full                                   # a manual run always rebuilds
+          elif [[ -z "$changed" ]]; then
+            scope=none
+          elif ! grep -qv '^pipelines/' <<<"$changed"; then
+            scope=pipelines
+          else
+            scope=full
+          fi
+          echo "Scope: $scope"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
+
+  pipelines:
+    needs: plan
+    if: needs.plan.outputs.scope == 'pipelines'
+    runs-on: ubuntu-24.04
+    environment: production-pipelines
+    steps:
+      - *ssh-setup
+      - name: Sync pipelines/ on VM 1
+        env:
+          HOST: ${{ secrets.PROD_VM1_HOST }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- vm1 '$SHA' --pipelines-only"
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.scope == 'full'
+    runs-on: ubuntu-24.04
+    # One approval covers both VMs.
+    environment: production
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+      NO_CACHE: ${{ inputs.no_cache && '--no-cache' || '' }}
+    steps:
+      - *ssh-setup
+      # VM 1 first (Airflow, JobManager), then the TaskManagers; a failure on VM 1 stops the rollout.
+      - name: Deploy VM 1
+        env:
+          HOST: ${{ secrets.PROD_VM1_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- vm1 '$SHA' $NO_CACHE"
+      - name: Deploy VM 2
+        env:
+          HOST: ${{ secrets.PROD_VM2_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- vm2 '$SHA' $NO_CACHE"

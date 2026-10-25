@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-10-25 · Current phase: **Phase 2: Connector spikes**
+Last updated: 2026-10-26 · Current phase: **Phase 2: Connector spikes**
 
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
 
@@ -12,7 +12,7 @@ Each phase has a single goal, a checklist, concrete deliverables, and exit crite
 | [3](#phase-3-configuration-model-and-rendering) | Configuration model, validation, rendering, CLI | 1–2 weeks | Not started |
 | [4](#phase-4-ingestion-runner) | Generic Flink ingestion runner | 2 weeks | Not started |
 | [5](#phase-5-end-to-end-runs-through-airflow) | End-to-end runs through Airflow | 2 weeks | Not started |
-| [6](#phase-6-prod-environment-and-cicd) | Prod environment and CI/CD | 1–2 weeks | Blocked: prod VMs not available |
+| [6](#phase-6-prod-environment-and-cicd) | Prod environment and CI/CD | 1–2 weeks | CI live; deploy pipeline and prod Compose drafted ([ADR-0012](adr/0012-cicd-ssh-deploy.md)); blocked on the prod VMs |
 | [7](#phase-7-hardening-and-extensions) | Hardening and extensions | Ongoing | Not started |
 
 Phase 2 can start as soon as the Phase 1 Flink cluster runs in non-prod. Phase 6 needs Phase 5 and the prod VMs.
@@ -197,7 +197,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 - [ ] Renderer: resolved job spec + Flink submission request
 - [ ] `ingestctl validate | preflight | render`
 - [ ] Golden tests: `tests/golden/<case>/{job.yaml, expected/}` for each source and both sinks
-- [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`
+- [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`. *Lint, types, builds and file validation run in `.github/workflows/ci.yml` since 2026-10-26; unit tests to add*
 - [ ] UI: PostgreSQL, MySQL and BigQuery connection forms; preflight results (schema, row and byte estimates) in the job wizard
 - [ ] Table browser: `GET /connections/{name}/tables` lists schemas, tables and estimated row counts (SQL Server: `INFORMATION_SCHEMA` + `sys.partitions`); in the Source step, picking a table writes `SELECT <columns> FROM <table>`
 - [ ] Sink path suggested as `<system>/<schema>/<table>` from the connection and the query, like the job name; still editable
@@ -279,12 +279,12 @@ Complete DAG factory and tasks, `runs` schema, UI run history, dashboards.
 
 ### Checklist
 
-- [ ] `infrastructure/prod/vm1/docker-compose.yml` (Web UI, API, Airflow, Flink JobManager) and `infrastructure/prod/vm2/docker-compose.yml` (TaskManagers)
+- [ ] `infrastructure/prod/vm1/docker-compose.yml` (Web UI, API, Airflow, Flink JobManager) and `infrastructure/prod/vm2/docker-compose.yml` (TaskManagers). *Drafted 2026-10-26; run on the VMs*
 - [ ] Network: VM 2 → VM 1 JobManager RPC and blob server ports; fixed TaskManager port ranges; both VMs → sources and ADLS Gen2
 - [ ] Prod secret backend (`kv://`) and ADLS Gen2 identity
 - [ ] Platform and Airflow PostgreSQL in prod, with backups: the shared server of the agent stack on VM 1 ([ADR-0011](adr/0011-shared-postgresql-server.md)); `vm1` Compose joins `data-platform`; `pg_dump` per database
-- [ ] CI/CD: build and push images, deploy each VM's Compose project
-- [ ] **Job file sync:** every new or changed file in `pipelines/jobs/` and `pipelines/connections/` is fetched to VM 1 automatically (sync on merge to `main` or a periodic Git pull), so Airflow picks it up without a manual deployment
+- [ ] CI/CD ([ADR-0012](adr/0012-cicd-ssh-deploy.md)): CI on every push and pull request; deploy after approval (environment `production`) over SSH, building on each VM. *Workflows written; set the GitHub secrets, variables and environments from [infrastructure/prod/README.md](../infrastructure/prod/README.md), then `PROD_DEPLOY_ENABLED=true`*
+- [ ] **Job file sync:** every new or changed file in `pipelines/jobs/` and `pipelines/connections/` is fetched to VM 1 automatically (sync on merge to `main` or a periodic Git pull), so Airflow picks it up without a manual deployment. *Written: `pipelines/`-only changes deploy without approval (environment `production-pipelines`)*
 - [ ] Decide how the UI saves in prod: commit or pull request to Git, or direct write followed by a commit
 - [ ] Entra ID SSO; roles: DE admin (onboard connections) and user (create jobs on granted connections)
 

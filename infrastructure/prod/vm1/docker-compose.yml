@@ -1,0 +1,173 @@
+# Prod VM 1 (ADR-0007, ADR-0009): Web UI, Ingestion API, Airflow (one container per component), Flink JobManager.
+# The metadata DB is the shared PostgreSQL server of the data-onboarding-agent stack on this VM (ADR-0011).
+# Deployed by infrastructure/prod/deploy.sh (ADR-0012). DRAFT until the prod VMs exist (roadmap Phase 6).
+# Secrets: .env next to this file (from .env.example) and sources.env for env:// references, both only on the VM.
+
+name: ingestion-prod
+
+x-airflow: &airflow
+  image: apache/airflow:3.3.2
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?}@${METADATA_DB_HOST:-postgres}:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?}
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh
+    # One admin user until Entra ID SSO (Phase 6); its password is written to the file by the api-server.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
+    AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"
+    AIRFLOW__DAG_PROCESSOR__MIN_FILE_PROCESS_INTERVAL: "30"
+    INGESTION_PROJECT_DIR: /opt/airflow/projects/ingestion
+    INGESTION_RUN_DIR: /opt/ingestion/runs
+    FLINK_REST_URL: http://flink-jobmanager:8081
+    FLINK_SMOKE_JAR: /opt/flink-examples/streaming/WordCount.jar
+  volumes:
+    - ../../../code/airflow/dags:/opt/airflow/dags/ingestion:ro
+    - ../../../code/airflow/scripts:/opt/airflow/scripts:ro
+    - ../../../pipelines/jobs:/opt/airflow/projects/ingestion/jobs:ro
+    - ../../../pipelines/connections:/opt/airflow/projects/ingestion/connections:ro
+    - ../../../code/templates:/opt/airflow/projects/ingestion/templates:ro
+    - runs:/opt/ingestion/runs
+    - airflow-logs:/opt/airflow/logs
+    - flink-examples:/opt/flink-examples:ro
+  networks: [default, platform]
+  restart: unless-stopped
+
+services:
+  ui:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/ui/Dockerfile
+    image: ingestion-ui:prod
+    ports:
+      - "${UI_PORT:-80}:80"
+    environment:
+      AIRFLOW_URL: ${AIRFLOW_PUBLIC_URL:-}
+      FLINK_URL: ${FLINK_PUBLIC_URL:-}
+      API_MODE: http
+    mem_limit: 64m
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/api/Dockerfile
+    image: ingestion-api:prod
+    environment:
+      AIRFLOW_API_URL: http://airflow-api-server:8080
+      AIRFLOW_USERNAME: admin
+      AIRFLOW_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?}
+    env_file:
+      - path: sources.env
+        required: false
+    volumes:
+      - ../../../pipelines:/workspace/pipelines
+      - ../../../code/templates:/workspace/code/templates:ro
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Runs once per deploy: migrates the metadata DB and creates the pools from the connection files.
+  airflow-init:
+    <<: *airflow
+    command:
+      - bash
+      - -c
+      - airflow db migrate && python /opt/airflow/scripts/sync_pools.py > /tmp/pools.json && airflow pools import /tmp/pools.json
+    restart: "no"
+
+  airflow-api-server:
+    <<: *airflow
+    command:
+      - bash
+      - -c
+      - |
+        printf '{"admin": "%s"}' "$$AIRFLOW_ADMIN_PASSWORD" > /opt/airflow/passwords.json && exec airflow api-server
+    environment:
+      <<: *airflow-env
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?}
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "-s", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  airflow-scheduler:
+    <<: *airflow
+    command: airflow scheduler
+    env_file:
+      - path: sources.env
+        required: false
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow
+    command: airflow dag-processor
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer:
+    <<: *airflow
+    command: airflow triggerer
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  flink-jobmanager:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/flink/Dockerfile
+      target: jobmanager
+    image: ingestion-flink-jobmanager:prod
+    command: jobmanager
+    ports:
+      - "8081:8081"   # REST and web UI
+      - "6123:6123"   # RPC, from the TaskManagers on VM 2
+      - "6124:6124"   # blob server, from the TaskManagers on VM 2
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: ${FLINK_JOBMANAGER_ADDRESS:?private address of VM 1}
+        jobmanager.bind-host: 0.0.0.0
+        jobmanager.rpc.port: 6123
+        blob.server.port: 6124
+        rest.bind-address: 0.0.0.0
+        jobmanager.memory.process.size: ${JOBMANAGER_MEMORY:-2048m}
+        execution.runtime-mode: BATCH
+        python.client.executable: /opt/pyflink/bin/python
+        python.executable: /opt/pyflink/bin/python
+    env_file:
+      - path: sources.env
+        required: false
+    volumes:
+      - runs:/opt/ingestion/runs:ro
+      - flink-examples:/opt/flink/examples
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8081"]
+      interval: 15s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+networks:
+  default: {}
+  # Created by the data-onboarding-agent stack, which runs the shared PostgreSQL server (ADR-0011).
+  platform:
+    name: data-platform
+    external: true
+
+volumes:
+  runs:
+  airflow-logs:
+  flink-examples:

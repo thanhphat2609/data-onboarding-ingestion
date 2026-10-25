@@ -16,7 +16,7 @@ The design is inspired by Grab's [one-click ingestion platform](https://engineer
 
 ### Goals (v1)
 
-- Sources: **SQL Server**, **PostgreSQL**, **BigQuery**.
+- Sources: **SQL Server**, **PostgreSQL**, **MySQL**, **BigQuery**; a **REST API** source is planned after them (approach decided in Phase 2).
 - Destination: **Azure Data Lake Storage Gen2** (Blob Storage with hierarchical namespace).
 - Formats: **Parquet** and **Delta Lake**, partitioned by `ingest_date`.
 - Users can write **free-form read-only SQL** (joins, CTEs, aggregations).
@@ -257,7 +257,7 @@ Details: [ADR-0007](adr/0007-flink-standalone-session-cluster.md), [ADR-0009](ad
 
 | Environment | Layout | Storage | Purpose |
 |---|---|---|---|
-| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, SQL Server test source | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
+| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, SQL Server test source (PostgreSQL and MySQL test sources from Phase 2) | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
 | **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, plus the data-onboarding-agent stack with the shared PostgreSQL server. VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
 
 Prod network requirements: VM 2 reaches the JobManager RPC and blob server ports on VM 1; TaskManager ports use fixed ranges; both VMs reach the sources and ADLS Gen2.

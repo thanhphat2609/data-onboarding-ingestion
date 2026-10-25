@@ -1,14 +1,14 @@
 # Roadmap
 
-Last updated: 2026-10-25 · Current phase: **Phase 1: Non-prod environment, Web UI and Airflow**
+Last updated: 2026-10-25 · Current phase: **Phase 2: Connector spikes**
 
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
 
 | Phase | Goal | Estimate | Status |
 |---|---|---|---|
 | [0](#phase-0-project-initialization) | Project initialization: architecture, plan, decisions | 1 week | Open items: review, access |
-| [1](#phase-1-non-prod-environment-web-ui-and-airflow) | Non-prod environment, Web UI and Airflow (SQL Server) | 2–3 weeks | **In progress** |
-| [2](#phase-2-connector-spikes) | Connector spikes | 1 week | Not started |
+| [1](#phase-1-non-prod-environment-web-ui-and-airflow) | Non-prod environment, Web UI and Airflow (SQL Server) | 2–3 weeks | Done 2026-10-25 (`v0.1.0`), checks carried over to Phase 2 |
+| [2](#phase-2-connector-spikes) | Connector spikes: SQL Server, PostgreSQL, MySQL, BigQuery; then a REST API source | 1–2 weeks | **In progress** |
 | [3](#phase-3-configuration-model-and-rendering) | Configuration model, validation, rendering, CLI | 1–2 weeks | Not started |
 | [4](#phase-4-ingestion-runner) | Generic Flink ingestion runner | 2 weeks | Not started |
 | [5](#phase-5-end-to-end-runs-through-airflow) | End-to-end runs through Airflow | 2 weeks | Not started |
@@ -26,6 +26,7 @@ Tags follow [CONTRIBUTING.md](../CONTRIBUTING.md#versioning-and-releases): `v0.<
 | `v0.1.0-rc.1` | 2026-10-22 | Phase 1 first cut: Web UI on the mock API, non-prod Compose, DAG factory, templates and schemas |
 | `v0.1.0-rc.2` | 2026-10-25 | Shared metadata DB with the agent stack ([ADR-0011](adr/0011-shared-postgresql-server.md)) |
 | `v0.1.0-rc.3` | 2026-10-25 | Ingestion API (`code/control-plane/`); the Web UI container uses it instead of the mock |
+| `v0.1.0` | 2026-10-25 | Phase 1 closed: non-prod stack runs in Codespaces (Compose fix for the `flink-examples` volume) |
 
 
 ```mermaid
@@ -71,7 +72,9 @@ flowchart LR
 
 **Goal:** a data engineer opens a Codespace, onboards a SQL Server connection and creates a job in the Web UI, and the job appears in Airflow as its own DAG that can submit work to the Flink JobManager.
 
-Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
+Scope is **SQL Server only**. PostgreSQL, MySQL and BigQuery forms follow in Phase 3.
+
+**Closed on 2026-10-25** by decision: the stack starts in a Codespace and the Web UI works on the real API. The end-to-end checks below were not all run yet; they are the first item of Phase 2, and items marked *verify* stay open until then.
 
 ### Checklist
 
@@ -119,7 +122,7 @@ Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
 - [ ] Invalid files skipped and logged with a one-line reason; other DAGs keep loading. *Tested against the stub*
 - [ ] Skeleton tasks `validate → submit → wait`: submit Flink's WordCount example through the JobManager REST API and wait for `FINISHED` (replaced by the runner in Phase 4). *Tested against a fake Flink REST API*
 
-**Next: verify in a Codespace** (closes the items marked *verify* above, then tag `v0.1.0`)
+**Carried over to Phase 2: verify in a Codespace** (closes the items marked *verify* above)
 
 1. New Codespace: every service healthy (`docker compose ps`), Web UI without the "Mock API" badge.
 2. Create a SQL Server connection to `sqlserver` / `crm` with `env://CRM_SQLSERVER_RO_PASSWORD`; "Test connection" passes; pool `conn__<name>` appears in Airflow.
@@ -148,19 +151,24 @@ Scope is **SQL Server only**. PostgreSQL and BigQuery forms follow in Phase 3.
 
 **Goal:** prove every risky building block works on Flink 1.20 before designing code around it.
 
+Sources, in order: **SQL Server, PostgreSQL, MySQL, BigQuery**. A REST API source comes after those four work.
+
 ### Checklist
 
+- [ ] Phase 1 carry-over: run the [Phase 1 checks](#phase-1-non-prod-environment-web-ui-and-airflow) (Run now → `FINISHED`, invalid file flagged, usability test) and ADR-0011 shared mode
 - [ ] Flink image (`infrastructure/docker/flink/`) with `flink-azure-fs-hadoop`, JDBC connector and drivers; write to the dev ADLS Gen2 account with `abfss://`
-- [ ] Add PostgreSQL 16 with seeded sample tables (small and ~10M rows) to non-prod; add a ~10M-row table to the SQL Server seed
+- [ ] Add PostgreSQL 16 and MySQL 8.4 test sources with seeded sample tables (small and ~10M rows) to non-prod; add a ~10M-row table to the SQL Server seed
 - [ ] Spike: PostgreSQL → Parquet with partitioned scan (`scan.partition.*`, `scan.auto-commit=false`)
 - [ ] Spike: SQL Server → Parquet, including `applicationIntent=ReadOnly`
+- [ ] Spike: MySQL → Parquet with partitioned scan, streaming result sets (`useCursorFetch=true`) and a read-only user
 - [ ] Spike ([ADR-0010](adr/0010-pyflink-runner.md)): PyFlink job submitted through REST with `PythonDriver` on the session cluster; JobManager image with Python and PyFlink, size measured
-- [ ] Spike: query mode from PyFlink SQL: the JDBC table connector with a derived table `(<query>) AS q`, including a JOIN, an inlined CTE and a partitioned scan, on SQL Server and PostgreSQL; fallback: Java `JdbcSource` through the PyFlink gateway
+- [ ] Spike: query mode from PyFlink SQL: the JDBC table connector with a derived table `(<query>) AS q`, including a JOIN, an inlined CTE and a partitioned scan, on SQL Server, PostgreSQL and MySQL; fallback: Java `JdbcSource` through the PyFlink gateway
 - [ ] Spike: BigQuery source on Flink 1.20 from PyFlink SQL DDL (table read and materialized query)
 - [ ] Spike: Delta commit of externally written Parquet files with delta-rs, including replacing one `ingest_date` partition atomically; compare with the `delta-flink` sink
 - [ ] Spike: Parquet timestamp encoding written by Flink is readable by Spark, pandas and Delta readers
 - [ ] Measure throughput (rows/s per slot) per source for sizing defaults and the TaskManager slot count
 - [ ] Pin connector and library versions; record results in `docs/spikes/phase-2.md`
+- [ ] After the four sources: spike a REST API source (paginated JSON over HTTP → Parquet). Flink has no generic HTTP source, so compare a PyFlink-side fetch, a custom source and an Airflow-side fetch; record the choice in an ADR
 
 ### Deliverables
 
@@ -168,7 +176,8 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 
 ### Exit criteria
 
-- All three sources run as batch jobs on the non-prod session cluster and reach `FINISHED` on their own.
+- SQL Server, PostgreSQL, MySQL and BigQuery run as batch jobs on the non-prod session cluster and reach `FINISHED` on their own.
+- The REST API source approach is decided in an ADR (its implementation can move to a later phase).
 - Output is readable by pandas and Spark.
 - The Delta strategy and the BigQuery connector choice are decided and recorded.
 
@@ -180,7 +189,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 
 ### Checklist
 
-- [ ] JSON Schemas for all four kinds and all templates: `sqlserver`, `postgresql`, `bigquery`, `adls_parquet`, `adls_delta`
+- [ ] JSON Schemas for all four kinds and all templates: `sqlserver`, `postgresql`, `mysql`, `bigquery`, `adls_parquet`, `adls_delta`
 - [ ] Pydantic models generated from or checked against the schemas
 - [ ] Full SQL validator (sqlglot): read-only check, dialect blocklist, unique named columns, table vs query mode
 - [ ] AST-based rewrites: preview, count, bounds, partitioned query (CTE inlining into derived tables, `ORDER BY` removal)
@@ -189,7 +198,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 - [ ] `ingestctl validate | preflight | render`
 - [ ] Golden tests: `tests/golden/<case>/{job.yaml, expected/}` for each source and both sinks
 - [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`
-- [ ] UI: PostgreSQL and BigQuery connection forms; preflight results (schema, row and byte estimates) in the job wizard
+- [ ] UI: PostgreSQL, MySQL and BigQuery connection forms; preflight results (schema, row and byte estimates) in the job wizard
 - [ ] Table browser: `GET /connections/{name}/tables` lists schemas, tables and estimated row counts (SQL Server: `INFORMATION_SCHEMA` + `sys.partitions`); in the Source step, picking a table writes `SELECT <columns> FROM <table>`
 - [ ] Sink path suggested as `<system>/<schema>/<table>` from the connection and the query, like the job name; still editable
 
@@ -199,7 +208,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 
 ### Exit criteria
 
-- `ingestctl render pipelines/jobs/<example>.yaml` produces the expected output for all three sources and both sinks.
+- `ingestctl render pipelines/jobs/<example>.yaml` produces the expected output for all four sources and both sinks.
 - Every rejected SQL case in the test suite is rejected with an actionable message.
 - CI blocks an invalid connection or job file.
 
@@ -293,7 +302,7 @@ Prioritized after Phase 6 based on demand:
 
 - Incremental loads by watermark column
 - Catalog registration (Unity Catalog or Hive Metastore) and post-publish data quality checks
-- Sinks: S3, GCS; sources: MySQL, Oracle
+- Sinks: S3, GCS; sources: Oracle, more REST APIs
 - CDC with Flink CDC ([ADR-0003](adr/0003-own-yaml-model.md) revisit)
 - JobManager high availability; more TaskManager VMs
 - Delta compaction and retention of old `ingest_date` partitions

@@ -60,4 +60,15 @@ BEGIN
 END
 GO
 
+-- Empty here; seed-large.sh fills it with ~10M rows for the Phase 2 throughput tests.
+IF OBJECT_ID('dbo.orders') IS NULL
+CREATE TABLE dbo.orders (
+  order_id    BIGINT        NOT NULL PRIMARY KEY,
+  customer_id INT           NOT NULL,
+  amount      DECIMAL(12,2) NOT NULL,
+  status      VARCHAR(20)   NOT NULL,
+  created_at  DATETIME2(3)  NOT NULL
+);
+GO
+
 PRINT 'crm sample database is ready';

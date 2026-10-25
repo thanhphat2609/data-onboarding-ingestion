@@ -9,7 +9,6 @@
 name: ingestion-nonprod
 
 x-airflow-image: &airflow-image apache/airflow:3.3.2
-x-flink-image: &flink-image flink:1.20.5-scala_2.12-java17
 x-mssql-image: &mssql-image mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
 
 services:
@@ -122,7 +121,11 @@ services:
     restart: unless-stopped
 
   flink-jobmanager:
-    image: *flink-image
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/flink/Dockerfile
+      target: jobmanager
+    image: ingestion-flink-jobmanager:dev
     command: jobmanager
     ports:
       - "8081:8081"
@@ -131,27 +134,43 @@ services:
         jobmanager.rpc.address: flink-jobmanager
         jobmanager.memory.process.size: 1024m
         execution.runtime-mode: BATCH
+        python.client.executable: /opt/pyflink/bin/python
+        python.executable: /opt/pyflink/bin/python
+      # Phase 2 spikes read source passwords here; the runner resolves env:// the same way (Phase 4).
+      CRM_SQLSERVER_RO_PASSWORD: ${CRM_SQLSERVER_RO_PASSWORD:?}
+      SALES_POSTGRES_RO_PASSWORD: ${SALES_POSTGRES_RO_PASSWORD:?run bootstrap.sh to add new secrets}
+      SHOP_MYSQL_RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to add new secrets}
     volumes:
       # Resolved job specs written by Airflow (ADR-0007).
       - ./data/runs:/opt/ingestion/runs:ro
       # Docker fills the empty volume from the image on first start; Airflow reads it.
       - flink-examples:/opt/flink/examples
+      # Phase 2 spike jobs and their local Parquet output (written by the TaskManager).
+      - ../../code/spikes:/opt/spikes:ro
+      - ./data/spike-out:/opt/ingestion/spike-out
     healthcheck:
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8081"]
       interval: 15s
       retries: 10
       start_period: 20s
-    mem_limit: 1280m
+    # JVM 1 GB plus the Python client that builds job graphs.
+    mem_limit: 1792m
     restart: unless-stopped
 
   flink-taskmanager:
-    image: *flink-image
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/flink/Dockerfile
+      target: taskmanager
+    image: ingestion-flink-taskmanager:dev
     command: taskmanager
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 4
         taskmanager.memory.process.size: 1536m
+    volumes:
+      - ./data/spike-out:/opt/ingestion/spike-out
     depends_on:
       flink-jobmanager:
         condition: service_healthy
@@ -201,6 +220,43 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Test source (Phase 2): database `sales`, read-only role svc_ingest_ro. Seeded on the first start of the volume.
+  postgres-source:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_PASSWORD: ${SALES_POSTGRES_ADMIN_PASSWORD:?run bootstrap.sh to add new secrets}
+      POSTGRES_DB: sales
+      RO_PASSWORD: ${SALES_POSTGRES_RO_PASSWORD:?run bootstrap.sh to add new secrets}
+    volumes:
+      - postgres-source-data:/var/lib/postgresql/data
+      - ./postgres-source:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "sales"]
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Test source (Phase 2): database `shop`, read-only user svc_ingest_ro. Seeded on the first start of the volume.
+  mysql-source:
+    image: mysql:8.4.13
+    command: ["--innodb-buffer-pool-size=256M", "--performance-schema=OFF"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SHOP_MYSQL_ROOT_PASSWORD:?run bootstrap.sh to add new secrets}
+      MYSQL_DATABASE: shop
+      RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to add new secrets}
+    volumes:
+      - mysql-source-data:/var/lib/mysql
+      - ./mysql-source:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      retries: 15
+      start_period: 40s
+    mem_limit: 768m
+    restart: unless-stopped
+
 networks:
   default: {}
   # Created by the data-onboarding-agent stack (or by bootstrap.sh when running standalone).
@@ -212,5 +268,7 @@ volumes:
   postgres-data:   # local-db profile only
   airflow-logs:
   sqlserver-data:
+  postgres-source-data:
+  mysql-source-data:
   # Filled from the JobManager image on first start; Airflow reads the smoke-job JAR from it.
   flink-examples:

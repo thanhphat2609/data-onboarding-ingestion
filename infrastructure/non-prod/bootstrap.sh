@@ -7,30 +7,37 @@ cd "$(dirname "$0")"
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  while grep -qE '^[A-Z0-9_]+=__GENERATE__$' .env; do
-    key=$(grep -m1 -E '^[A-Z0-9_]+=__GENERATE__$' .env | cut -d= -f1)
-    if [[ "$key" == "AIRFLOW_FERNET_KEY" ]]; then
-      # Fernet keys are 32 random bytes, URL-safe base64.
-      value=$(openssl rand -base64 32 | tr '+/' '-_')
-    else
-      # Prefix guarantees SQL Server password complexity.
-      value="Aa1-$(openssl rand -hex 16)"
-    fi
-    sed -i "s|^${key}=__GENERATE__$|${key}=${value}|" .env
-  done
   echo "Created infrastructure/non-prod/.env"
 else
   echo "Keeping existing infrastructure/non-prod/.env"
-  # .env files from before ADR-0011 had a local PostgreSQL only: keep it that way.
-  if ! grep -qE '^COMPOSE_PROFILES=' .env; then
-    printf '\n# Metadata DB (ADR-0011): local-db = local PostgreSQL; empty = shared server of data-onboarding-agent\nCOMPOSE_PROFILES=local-db\n' >> .env
-    echo "Added COMPOSE_PROFILES=local-db to .env"
-  fi
+  # Variables added to .env.example since this .env was created (for example new test sources) are appended.
+  while IFS= read -r line; do
+    key=${line%%=*}
+    if ! grep -qE "^${key}=" .env; then
+      printf '%s\n' "$line" >> .env
+      echo "Added ${key} to .env"
+    fi
+  done < <(grep -E '^[A-Z0-9_]+=' .env.example)
 fi
+
+while grep -qE '^[A-Z0-9_]+=__GENERATE__$' .env; do
+  key=$(grep -m1 -E '^[A-Z0-9_]+=__GENERATE__$' .env | cut -d= -f1)
+  if [[ "$key" == "AIRFLOW_FERNET_KEY" ]]; then
+    # Fernet keys are 32 random bytes, URL-safe base64.
+    value=$(openssl rand -base64 32 | tr '+/' '-_')
+  else
+    # Prefix guarantees SQL Server password complexity.
+    value="Aa1-$(openssl rand -hex 16)"
+  fi
+  sed -i "s|^${key}=__GENERATE__$|${key}=${value}|" .env
+done
 
 # Written by Airflow (uid 50000), read by the Flink JobManager.
 mkdir -p data/runs
 chmod 777 data/runs
+# Phase 2 spike output, written by the Flink TaskManager (uid 9999).
+mkdir -p data/spike-out
+chmod 777 data/spike-out
 
 # Airflow joins the platform network (ADR-0011). The data-onboarding-agent stack creates it when it runs on
 # this host; create it here for a standalone non-prod (COMPOSE_PROFILES=local-db).

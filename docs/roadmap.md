@@ -156,8 +156,8 @@ Sources, in order: **SQL Server, PostgreSQL, MySQL, BigQuery**. A REST API sourc
 ### Checklist
 
 - [ ] Phase 1 carry-over: run the [Phase 1 checks](#phase-1-non-prod-environment-web-ui-and-airflow) (Run now → `FINISHED`, invalid file flagged, usability test) and ADR-0011 shared mode
-- [ ] Flink image (`infrastructure/docker/flink/`) with `flink-azure-fs-hadoop`, JDBC connector and drivers; write to the dev ADLS Gen2 account with `abfss://`
-- [ ] Add PostgreSQL 16 and MySQL 8.4 test sources with seeded sample tables (small and ~10M rows) to non-prod; add a ~10M-row table to the SQL Server seed
+- [ ] Flink image (`infrastructure/docker/flink/`) with `flink-azure-fs-hadoop`, JDBC connector and drivers; write to the dev ADLS Gen2 account with `abfss://`. *Image written; build and ADLS write to verify (ADLS needs credentials)*
+- [ ] Add PostgreSQL 16 and MySQL 8.4 test sources with seeded sample tables (small and ~10M rows) to non-prod; add a ~10M-row table to the SQL Server seed. *Written: `postgres-source`, `mysql-source`, `seed-large.sh`; verify in a Codespace*
 - [ ] Spike: PostgreSQL → Parquet with partitioned scan (`scan.partition.*`, `scan.auto-commit=false`)
 - [ ] Spike: SQL Server → Parquet, including `applicationIntent=ReadOnly`
 - [ ] Spike: MySQL → Parquet with partitioned scan, streaming result sets (`useCursorFetch=true`) and a read-only user
@@ -167,7 +167,7 @@ Sources, in order: **SQL Server, PostgreSQL, MySQL, BigQuery**. A REST API sourc
 - [ ] Spike: Delta commit of externally written Parquet files with delta-rs, including replacing one `ingest_date` partition atomically; compare with the `delta-flink` sink
 - [ ] Spike: Parquet timestamp encoding written by Flink is readable by Spark, pandas and Delta readers
 - [ ] Measure throughput (rows/s per slot) per source for sizing defaults and the TaskManager slot count
-- [ ] Pin connector and library versions; record results in `docs/spikes/phase-2.md`
+- [ ] Pin connector and library versions; record results in [`docs/spikes/phase-2.md`](spikes/phase-2.md) (spike jobs in `code/spikes/phase-2/`)
 - [ ] After the four sources: spike a REST API source (paginated JSON over HTTP → Parquet). Flink has no generic HTTP source, so compare a PyFlink-side fetch, a custom source and an Airflow-side fetch; record the choice in an ADR
 
 ### Deliverables

@@ -5,11 +5,12 @@ Everything that defines containers and environments ([ADR-0009](../docs/adr/0009
 ```
 docker/ui/       Web UI image (static build served by nginx, proxies /api)
 docker/api/      Ingestion API image (code/control-plane)
+docker/flink/    Flink image: JDBC connector and drivers, Parquet, ADLS plugin; target jobmanager adds PyFlink
 non-prod/        One Compose project with every service, for GitHub Codespaces
 prod/            Phase 6, once the prod VMs exist
 ```
 
-Airflow and Flink use the upstream images until they need extra dependencies.
+Airflow uses the upstream image; Flink uses `docker/flink/` from Phase 2.
 
 ## Non-prod
 
@@ -20,6 +21,10 @@ Airflow and Flink use the upstream images until they need extra dependencies.
 | Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod |
 | Flink web UI | 8081 | Session cluster: one JobManager, one TaskManager with 4 slots |
 | SQL Server | 1433 | Sample database `crm`, read-only login `svc_ingest_ro` |
+| PostgreSQL source | internal | Phase 2 test source: database `sales`, read-only role `svc_ingest_ro` (`env://SALES_POSTGRES_RO_PASSWORD`) |
+| MySQL source | internal | Phase 2 test source: database `shop`, read-only user `svc_ingest_ro` (`env://SHOP_MYSQL_RO_PASSWORD`) |
+
+The three test sources share one model: `segments`, `customers` (10,000 rows) and `orders`, empty until `bash infrastructure/non-prod/seed-large.sh` fills it with 10M rows. After pulling new services, run `bootstrap.sh` again: it adds new variables from `.env.example` to an existing `.env`.
 | PostgreSQL | internal | Databases `airflow` and `platform`. The shared server or a local container, see below |
 
 ### Metadata DB: shared server or local

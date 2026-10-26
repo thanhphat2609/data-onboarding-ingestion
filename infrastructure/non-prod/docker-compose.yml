@@ -39,6 +39,8 @@ services:
       AIRFLOW_API_URL: http://airflow:8080
       # Secrets referenced by connections as env://<VAR>. Add a line here for each new reference.
       CRM_SQLSERVER_RO_PASSWORD: ${CRM_SQLSERVER_RO_PASSWORD:?}
+      SALES_POSTGRES_RO_PASSWORD: ${SALES_POSTGRES_RO_PASSWORD:?run bootstrap.sh to add new secrets}
+      SHOP_MYSQL_RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to add new secrets}
     volumes:
       # The same files Airflow reads: a saved job becomes a DAG without a restart (ADR-0008).
       - ../../pipelines:/workspace/pipelines

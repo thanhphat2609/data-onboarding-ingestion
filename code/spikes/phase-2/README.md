@@ -23,6 +23,8 @@ alias jm='docker compose -f infrastructure/non-prod/docker-compose.yml exec flin
 | Query mode (JOIN + CTE as a derived table) | `jm flink run -py /opt/spikes/phase-2/jdbc_to_parquet.py --source sqlserver --mode query` |
 | Submit through REST with PythonDriver | `jm python /opt/spikes/phase-2/submit_rest.py /opt/spikes/phase-2/jdbc_to_parquet.py --source sqlserver` |
 | Read the output back | `jm python /opt/spikes/phase-2/check_parquet.py /opt/ingestion/spike-out/postgres/customers` |
-| Write to ADLS (needs credentials) | add `--out abfss://<container>@<account>.dfs.core.windows.net/spikes` |
+| Write to ADLS (needs credentials) | add `--out abfss://data-onboarding-ingestion@<account>.dfs.core.windows.net/spikes` |
+
+**ADLS Gen2 for the spikes:** a storage account with **hierarchical namespace enabled** (it can't be turned on later without a migration), and a container named `data-onboarding-ingestion`. The account name itself allows only 3-24 lowercase letters and digits, no hyphens (for example `stdataonboardingdev`); the hyphenated name fits the container. Jobs then set `container: data-onboarding-ingestion` in the `adls_parquet` sink (its default is `raw`).
 
 `--source` is `sqlserver`, `postgres` or `mysql`. Each run prints a `SPIKE ... seconds=` line for the throughput table. BigQuery and the Delta commit get their own scripts once the BigQuery project and the ADLS account are available.

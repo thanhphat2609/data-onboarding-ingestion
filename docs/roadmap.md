@@ -8,7 +8,8 @@ Last updated: 2026-10-26 · Current phase: **Phase 2: Connector spikes**
 > 1. In a Codespace: `git pull`, `bash infrastructure/non-prod/bootstrap.sh` (adds the new source passwords), `docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build`; every service healthy, including `postgres-source` and `mysql-source`.
 > 2. Phase 1 carry-over checks: connection + job in the UI, DAG appears, "Run now" → WordCount `FINISHED`, broken file flagged.
 > 3. JDBC spikes (`code/spikes/phase-2/README.md`): table mode on all three sources, `check_parquet.py`, query mode, REST submission with `PythonDriver`; then `seed-large.sh` and the 10M-row throughput runs. Fill [spikes/phase-2.md](spikes/phase-2.md) as you go.
-> 4. Needed from the user, as Codespaces secrets: ADLS Gen2 dev account + service principal (spike 8), BigQuery test project + service account JSON (spike 9).
+> 4. Needed from the user, as Codespaces secrets: ADLS Gen2 dev account (hierarchical namespace on, container `data-onboarding-ingestion`) + service principal (spike 8), BigQuery test project + service account JSON (spike 9). The user also plans their own PostgreSQL and MySQL test databases: onboard them in the UI with the new templates.
+> 4b. Done early (2026-10-26, from Phase 3): source templates `postgresql@1` and `mysql@1`, with Test connection and preview in the API (psycopg, PyMySQL) and sample connections to the non-prod test sources. Verify both in the Codespace with step 1.
 > 5. After that: Delta commit spike, Parquet timestamps in Spark, then the REST API source ADR.
 > 6. When the prod VMs exist: [infrastructure/prod/README.md](../infrastructure/prod/README.md) (VM setup, GitHub secrets, `PROD_DEPLOY_ENABLED=true`), deploying data-onboarding-agent first.
 
@@ -199,7 +200,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 
 ### Checklist
 
-- [ ] JSON Schemas for all four kinds and all templates: `sqlserver`, `postgresql`, `mysql`, `bigquery`, `adls_parquet`, `adls_delta`
+- [ ] JSON Schemas for all four kinds and all templates: `sqlserver`, `postgresql`, `mysql`, `bigquery`, `adls_parquet`, `adls_delta`. *`postgresql` and `mysql` templates added 2026-10-26, with Test connection and preview*
 - [ ] Pydantic models generated from or checked against the schemas
 - [ ] Full SQL validator (sqlglot): read-only check, dialect blocklist, unique named columns, table vs query mode
 - [ ] AST-based rewrites: preview, count, bounds, partitioned query (CTE inlining into derived tables, `ORDER BY` removal)
@@ -208,7 +209,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 - [ ] `ingestctl validate | preflight | render`
 - [ ] Golden tests: `tests/golden/<case>/{job.yaml, expected/}` for each source and both sinks
 - [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`. *Lint, types, builds and file validation run in `.github/workflows/ci.yml` since 2026-10-26; unit tests to add*
-- [ ] UI: PostgreSQL, MySQL and BigQuery connection forms; preflight results (schema, row and byte estimates) in the job wizard
+- [ ] UI: PostgreSQL, MySQL and BigQuery connection forms (PostgreSQL and MySQL done 2026-10-26: forms come from the templates); preflight results (schema, row and byte estimates) in the job wizard
 - [ ] Table browser: `GET /connections/{name}/tables` lists schemas, tables and estimated row counts (SQL Server: `INFORMATION_SCHEMA` + `sys.partitions`); in the Source step, picking a table writes `SELECT <columns> FROM <table>`
 - [ ] Sink path suggested as `<system>/<schema>/<table>` from the connection and the query, like the job name; still editable
 

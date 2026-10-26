@@ -31,7 +31,7 @@ src/ingestion/
   specs.py      JSON Schema + template parameter validation
   templates.py  Template registry, parameter checks, Jinja2 rendering of template snippets
   sql.py        sqlglot checks and the query wrapping used by preview
-  sources.py    Test connection and preview, one client per source template (SQL Server: pymssql)
+  sources.py    Test connection and preview, one client per source template (SQL Server: pymssql, PostgreSQL: psycopg, MySQL: PyMySQL)
   airflow.py    Airflow 3 REST client: trigger, latest runs, pools
   secrets.py    env:// resolution (kv:// in Phase 6)
   settings.py   Environment variables

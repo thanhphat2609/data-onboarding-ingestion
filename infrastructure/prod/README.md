@@ -55,7 +55,7 @@ Application secrets (database passwords, source passwords, Airflow keys) are **n
 1. Docker Engine with the Compose plugin; a `deploy` user in the `docker` group with the CI public key.
 2. Clone the repository to `PROD_REPO_DIR` as `deploy`. For a private repository, add a read-only **deploy key** (repository Settings → Deploy keys) on each VM.
 3. Copy `infrastructure/prod/<vm>/.env.example` to `.env` (and on VM 1 `sources.env.example` to `sources.env`) and fill in the values.
-4. VM 1: start the data-onboarding-agent stack first; it creates the `data-platform` network and the shared PostgreSQL server (ADR-0011).
+4. VM 1: deploy the data-onboarding-agent stack first (agent app, shared PostgreSQL, SearXNG; its own `infrastructure/prod/README.md`); it creates the `data-platform` network and the PostgreSQL server (ADR-0011). Its ports are localhost-only (7860, 5432), so they don't clash with this stack's 80, 8080, 8081, 6123 and 6124.
 5. Firewall: VM 2 → VM 1 on 6123-6124; VM 1 → VM 2 on 6121-6122; users → VM 1 on the UI port (Airflow 8080 and Flink 8081 only from admin networks); GitHub runners → both VMs on SSH.
 
 If the VMs can't accept SSH from the internet, run a self-hosted GitHub runner on VM 1 instead and point the jobs at it (`runs-on: [self-hosted, prod]`).

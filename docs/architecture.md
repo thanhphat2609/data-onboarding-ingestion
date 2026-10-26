@@ -258,7 +258,7 @@ Details: [ADR-0007](adr/0007-flink-standalone-session-cluster.md), [ADR-0009](ad
 | Environment | Layout | Storage | Purpose |
 |---|---|---|---|
 | **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, SQL Server test source (PostgreSQL and MySQL test sources from Phase 2) | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
-| **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, plus the data-onboarding-agent stack with the shared PostgreSQL server. VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
+| **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, plus the data-onboarding-agent stack (agent web app, the shared PostgreSQL server, SearXNG for its web research). VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
 
 Prod network requirements: VM 2 reaches the JobManager RPC and blob server ports on VM 1; TaskManager ports use fixed ranges; both VMs reach the sources and ADLS Gen2.
 

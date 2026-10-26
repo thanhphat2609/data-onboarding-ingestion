@@ -34,7 +34,7 @@ The platform has one PostgreSQL server ([ADR-0011](../docs/adr/0011-shared-postg
 | Where | `COMPOSE_PROFILES` in `.env` | Metadata DB |
 |---|---|---|
 | Standalone Codespace of this repo (default) | `local-db` | Local `postgres` container in this project, created as before |
-| Both stacks on one host (demo VM 1: Agent + Airflow + Flink JobManager) | empty | The agent stack's server. Start that stack first, and set `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` to its `POSTGRES_AIRFLOW_PASSWORD` / `POSTGRES_PLATFORM_PASSWORD` |
+| Both stacks on one host (demo VM 1: agent stack + Airflow + Flink JobManager) | empty | The agent stack's server. Start that stack first, and set `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` to its `POSTGRES_AIRFLOW_PASSWORD` / `POSTGRES_PLATFORM_PASSWORD` |
 
 `bootstrap.sh` creates the `data-platform` network if it is missing, writes `COMPOSE_PROFILES=local-db` into a new `.env`, and adds it to an `.env` from before this change. In an existing Codespace, run `bash infrastructure/non-prod/bootstrap.sh` once after pulling. In shared mode Airflow waits up to 5 minutes for the server (`start.sh`), because Compose can't wait for a service of another project.
 
@@ -77,6 +77,8 @@ To work on the UI with hot reload, run `npm ci && npm run dev -- --port 5173` in
 docker compose -f infrastructure/non-prod/docker-compose.yml down -v   # deletes all data volumes
 rm -rf infrastructure/non-prod/data
 ```
+
+On one host the two stacks don't clash: the agent stack publishes only `127.0.0.1:7860` (app) and `127.0.0.1:5432` (PostgreSQL); its SearXNG container has no host port. This stack uses 3000, 8000, 8080, 8081 and 1433. Never combine `local-db` with the agent stack on one host: Airflow would see two `postgres` containers.
 
 `.env` is kept; delete it as well to get new secrets. In shared mode `down -v` doesn't touch the metadata DB, which lives in the agent stack's volume. Reset it there, or drop and recreate the `airflow` database.
 

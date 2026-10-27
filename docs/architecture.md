@@ -334,7 +334,7 @@ Directories are created in the phase that first needs them (see [roadmap.md](roa
 | Runs share one session cluster | A heavy run delays or starves others | Airflow pools per connection and for task slots; parallelism caps |
 | JobManager is a single point of failure | Running jobs fail on restart | Airflow retries the whole run; staging keeps the lake clean; HA in Phase 7 |
 | Codespaces resources and idle stop | Slow or interrupted non-prod | Large machine type; long-running checks only in prod |
-| Files written by the UI drift from Git | Jobs that nobody reviewed | Non-prod writes into the repository working tree; prod save path decided in Phase 6 (open question 7) |
+| Files written by the UI drift from Git | Jobs that nobody reviewed | Non-prod writes into the repository working tree; in prod each save opens a pull request, reviewed and merged before it reaches VM 1 ([ADR-0014](adr/0014-prod-save-flow.md), proposed) |
 | Full reads overload OLTP databases | Production impact | Read replicas, per-connection concurrency and partition limits, optional run windows |
 | Inconsistent snapshot with parallel reads | Missing or duplicated rows | Fixed bounds, `run_ts`, snapshot isolation, tolerance policy |
 | Heavy or unsafe user SQL | Source load, BigQuery cost | Read-only principals, AST validation, `statement_timeout`, BigQuery dry-run byte limit |

@@ -17,7 +17,8 @@ Statuses: `Proposed` → `Accepted` | `Rejected`, later optionally `Superseded b
 | [0009](0009-environments.md) | Non-prod on GitHub Codespaces, prod on two VMs | Proposed |
 | [0010](0010-pyflink-runner.md) | PyFlink runner, Table API and SQL only | Proposed (pending Phase 2 spikes) |
 | [0011](0011-shared-postgresql-server.md) | One shared PostgreSQL server, hosted by the onboarding agent stack | Proposed |
-| [0012](0012-cicd-ssh-deploy.md) | Two-stage CI/CD: checks, then a manually approved deploy that builds on the VMs | Proposed |
+| [0012](0012-cicd-ssh-deploy.md) | Two-stage CI/CD: checks, then a manually approved deploy that builds on the VMs | Proposed (secrets amended by 0013) |
+| [0013](0013-prod-settings-in-github.md) | Every prod setting in GitHub secrets and variables; the Deploy workflow writes the files on the VMs | Proposed |
 
 ## Template
 

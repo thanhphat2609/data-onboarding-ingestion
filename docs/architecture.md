@@ -134,7 +134,7 @@ A standalone session cluster ([ADR-0007](adr/0007-flink-standalone-session-clust
 
 - Connections store secret references, never values:
   - `env://<VAR>` in non-prod: values come from Codespaces secrets or a local `.env` file, injected into the API, Airflow and Flink containers.
-  - `kv://<vault>/<secret>` in prod: Azure Key Vault, accessed with the VM's managed identity if the VMs run on Azure (open question, Phase 6).
+  - `kv://<vault>/<secret>` in prod: Azure Key Vault, accessed with the VM's managed identity if the VMs run on Azure (open question, Phase 6). Until then prod uses `env://` too: the values are GitHub secrets that the Deploy workflow writes into `sources.env` on VM 1 ([ADR-0013](adr/0013-prod-settings-in-github.md)).
 - The runner resolves references when it builds the job graph. Secret values never appear in program arguments, the Flink web UI or Airflow logs.
 - Every source connection uses a dedicated **read-only** database principal. This is the primary security control; SQL validation is a second layer.
 - ADLS Gen2 access: a service principal from Codespaces secrets in non-prod; managed identity in prod (to be confirmed).
@@ -294,7 +294,7 @@ infrastructure/
 | Metadata | PostgreSQL 16 (Airflow metadata + platform database), on the shared server of the agent stack ([ADR-0011](adr/0011-shared-postgresql-server.md)) |
 | UI | React, Vite, TypeScript, Tailwind CSS, shadcn/ui (Base UI), CodeMirror 6, TanStack Query, nginx (static serving) |
 | Infrastructure | Docker Compose; GitHub Codespaces (non-prod); two VMs (prod) |
-| Secrets / identity | Environment variables (non-prod); Azure Key Vault (prod, to be confirmed); Entra ID SSO |
+| Secrets / identity | Environment variables (non-prod); GitHub secrets written to the VMs by the Deploy workflow (prod, [ADR-0013](adr/0013-prod-settings-in-github.md)), later Azure Key Vault (to be confirmed); Entra ID SSO |
 | Observability | Airflow UI, Flink web UI, Prometheus, Grafana, Flink History Server |
 
 Exact versions are pinned in Phase 1 (Airflow, PostgreSQL, Flink image) and at the end of the Phase 2 spikes (connectors).

@@ -42,6 +42,7 @@ Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod 
 | [Roadmap](docs/roadmap.md) | Phases, checklists, exit criteria, open questions |
 | [Configuration spec](docs/configuration-spec.md) | `SourceTemplate`, `SinkTemplate`, `Connection`, `IngestionJob` |
 | [ADRs](docs/adr/README.md) | Architecture decisions and their trade-offs |
+| [PostgreSQL](docs/postgresql.md) | The `airflow` and `platform` databases: how to connect and check every table |
 | [Contributing](CONTRIBUTING.md) | Conventions for this repository |
 
 ## Scope (v1)

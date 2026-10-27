@@ -22,7 +22,8 @@ This repository is still in Phase 1, so its own stack can't be the one to test P
 
 - The agent stack's init script creates all three databases and roles on the first start of an empty volume.
 - The agent stack creates the Docker network `data-platform` and attaches the server to it. This repository's Airflow joins that network as an external network and connects to `postgres:5432` (`METADATA_DB_HOST` overrides the host).
-- The two `.env` files must agree: `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` here = `POSTGRES_AIRFLOW_PASSWORD` / `POSTGRES_PLATFORM_PASSWORD` there.
+- The two `.env` files must agree: `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` here = `POSTGRES_AIRFLOW_PASSWORD` / `POSTGRES_PLATFORM_PASSWORD` there. On prod VM 1 only `AIRFLOW_DB_PASSWORD` is needed until Phase 5 writes run records; the superuser password (`POSTGRES_PASSWORD`) and the agent's stay in the agent stack's `.env`.
+- `platform` is created empty from the start: the init script only runs on an empty volume. Why it is not part of the `airflow` database: [architecture §3.4](../architecture.md#34-metadata-db).
 - Compose can't wait for a service of another project, so `start.sh` waits for the database (`airflow db check`, up to 5 minutes) before `airflow db migrate`.
 - **Standalone fallback:** a Codespace of this repository alone has no agent stack. The `local-db` Compose profile starts the existing local PostgreSQL container with the same databases. `bootstrap.sh` sets `COMPOSE_PROFILES=local-db` by default and creates the `data-platform` network if it is missing.
 - The agent never reads the `airflow` or `platform` databases. If it needs run status, it calls the Airflow REST API.

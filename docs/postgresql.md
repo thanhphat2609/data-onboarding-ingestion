@@ -7,7 +7,7 @@ This repository uses two databases on the platform's one PostgreSQL 16 server ([
 | `airflow` | `airflow` | Airflow's metadata: DAGs, runs, task instances, pools | `airflow db migrate` (Airflow 3) |
 | `platform` | `platform` | Run records, `runs` and `run_events` | This repository, from Phase 5. **Empty until then** |
 
-The same server also holds `onboarding_agent` (data-onboarding-agent's sessions); its tables are in [the agent's POSTGRESQL.md](https://github.com/thanhphat2609/data-onboarding-agent/blob/main/docs/POSTGRESQL.md). Connections, jobs and templates are YAML files in Git, not tables.
+The same server also holds `onboarding_agent` (data-onboarding-agent's sessions); its tables are in [the agent's docs/postgresql.md](https://github.com/thanhphat2609/data-onboarding-agent/blob/main/docs/postgresql.md). Connections, jobs and templates are YAML files in Git, not tables.
 
 The `airflow` database is Airflow's: read it to check things, never write to it. Change state through the Airflow UI, its REST API or `airflow` CLI commands.
 

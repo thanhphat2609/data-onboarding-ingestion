@@ -36,6 +36,8 @@ The platform has one PostgreSQL server ([ADR-0011](../docs/adr/0011-shared-postg
 | Standalone Codespace of this repo (default) | `local-db` | Local `postgres` container in this project, created as before |
 | Both stacks on one host (demo VM 1: agent stack + Airflow + Flink JobManager) | empty | The agent stack's server. Start that stack first, and set `AIRFLOW_DB_PASSWORD` / `PLATFORM_DB_PASSWORD` to its `POSTGRES_AIRFLOW_PASSWORD` / `POSTGRES_PLATFORM_PASSWORD` |
 
+How to connect to either one and check every table: [docs/postgresql.md](../docs/postgresql.md).
+
 `bootstrap.sh` creates the `data-platform` network if it is missing, writes `COMPOSE_PROFILES=local-db` into a new `.env`, and adds it to an `.env` from before this change. In an existing Codespace, run `bash infrastructure/non-prod/bootstrap.sh` once after pulling. In shared mode Airflow waits up to 5 minutes for the server (`start.sh`), because Compose can't wait for a service of another project.
 
 ### Start

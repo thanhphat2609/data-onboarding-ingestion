@@ -11,7 +11,9 @@ default then applies). The values in the example file are only examples and are 
 Fails, listing every problem and never printing a value, when:
 - a key marked __GENERATE__ in the example (or any key, with --all-required) has no value;
 - a sensitive key (password, secret, token, key, accounts, webhook) is a variable instead of a secret;
-- a value contains a single quote or a line break (values are written single-quoted, taken literally).
+- a value contains a single quote or a line break (values are written single-quoted, taken literally);
+- any secret or variable of the repository is still the placeholder TODO (also PROD_REPO_DIR, PROD_SSH_PORT…, which
+  the workflow reads directly): use TODO for "set this later", and the deploy reminds you.
 """
 
 import json
@@ -21,6 +23,7 @@ import sys
 
 KEY_RE = re.compile(r"^\s*([A-Z][A-Z0-9_]*)=(.*)$")
 SENSITIVE_RE = re.compile(r"PASSWORD|SECRET|TOKEN|KEY|ACCOUNTS|WEBHOOK")
+PLACEHOLDER = "TODO"
 
 
 def example_keys(path: str) -> list[tuple[str, bool]]:
@@ -52,6 +55,16 @@ def render(
     return lines, problems
 
 
+def placeholders(secrets: dict, variables: dict) -> list[str]:
+    """Every repository secret or variable still set to TODO, whether or not this file uses it."""
+    return [
+        f"{key} is still {PLACEHOLDER}: set its real value in GitHub, or delete it to use the default"
+        for values in (secrets, variables)
+        for key, value in sorted(values.items())
+        if key.isupper() and str(value).strip().upper() == PLACEHOLDER
+    ]
+
+
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
     if len(args) != 2:
@@ -62,6 +75,7 @@ def main(argv: list[str]) -> int:
     variables = json.loads(os.environ.get("VARS_JSON") or "{}")
     keys = example_keys(example)
     lines, problems = render(keys, secrets, variables, "--all-required" in argv)
+    problems += placeholders(secrets, variables)
     if problems:
         for p in problems:
             print(f"::error::{p}")

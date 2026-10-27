@@ -28,6 +28,8 @@ The build reuses the Docker layer cache (rebuilding PyFlink every time takes min
 
 **Every prod setting lives here** ([ADR-0013](../../docs/adr/0013-prod-settings-in-github.md)); nothing is edited on the VMs. Each full deploy writes `vm1/.env`, `vm1/sources.env` and `vm2/.env` on the VMs, one line per key of the matching `*.env.example`, from the secret or variable of the **same name** ([render_env.py](render_env.py)). It stops before touching a VM when a required secret is missing, when a password-like setting was saved as a variable, or when `docker compose config` rejects the result. To change a setting: edit it here, then run **Actions → Deploy** (a `pipelines/`-only sync doesn't rewrite the files).
 
+A setting you can't fill in yet (e.g. the Flink addresses before the VMs exist): set it to **`TODO`**. The deploy stops while any secret or variable of this repository is still `TODO`, naming each one, so a placeholder never reaches a VM. Don't use another placeholder such as `1`: it would be deployed as a real value.
+
 Secrets and variables are per repository: set them here **and** in data-onboarding-agent. Both repositories can use the same SSH key and deploy user. One value is shared: this repository's `AIRFLOW_DB_PASSWORD` secret = the agent's `POSTGRES_AIRFLOW_PASSWORD` secret.
 
 ### Secrets (Settings → Secrets and variables → Actions → New repository secret)

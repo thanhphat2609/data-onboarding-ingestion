@@ -12,7 +12,7 @@ ADR-0012 kept GitHub to SSH access only: `.env` on each VM and `sources.env` on 
 
 - **Every prod setting is a repository secret or variable of this repository**, named exactly like its key in `infrastructure/prod/vm1/.env.example`, `vm1/sources.env.example` or `vm2/.env.example`. Passwords, keys and tokens are secrets; addresses, ports and sizes are variables. The example files are the list of settings.
 - **A full Deploy run writes the files** before `deploy.sh`: `infrastructure/prod/render_env.py` takes the keys of the target commit's example files and the values from the secret, else the variable, else empty (the Compose default). `docker compose config` checks the result on the runner. The files go to the VMs over the existing SSH connection, mode `600`, replacing what was there.
-- **It stops before touching a VM** when a required secret is missing (`__GENERATE__` in an example, every key of `sources.env`), when a password-like key is a variable, when a value can't be written to the file (a single quote or a line break), or when Compose rejects the result. Values are never printed.
+- **It stops before touching a VM** when a secret or variable is still the placeholder `TODO`, when a required secret is missing (`__GENERATE__` in an example, every key of `sources.env`), when a password-like key is a variable, when a value can't be written to the file (a single quote or a line break), or when Compose rejects the result. Values are never printed.
 - The `pipelines/`-only sync doesn't rewrite the files; a changed setting needs a manual Deploy run.
 - Still no GitHub environments (ADR-0012): repository secrets work on the current plan.
 

@@ -1,7 +1,9 @@
 # Stage 2 of CI/CD (ADR-0012).
 # - Code: deployed only when someone runs this workflow (Actions -> Deploy -> Run workflow); that click is the
-#   approval. The commit must be on main and have a green CI run. VM 1, then VM 2: git checkout <sha>,
-#   docker compose build --pull, up -d, prune old images and build cache.
+#   approval. The commit must be on main and have a green CI run. Every prod setting is a GitHub secret or variable
+#   (ADR-0013): the run writes VM 1's .env and sources.env and VM 2's .env from them (render_env.py), checks them with
+#   `docker compose config`, then VM 1, then VM 2: the files replaced, git checkout <sha>, docker compose build
+#   --pull, up -d, prune old images and build cache.
 # - Only pipelines/ changed: synced to VM 1 right after CI passes on main, without a click (git checkout + pool
 #   sync, no rebuild), so a merged job file becomes a DAG on its own (roadmap Phase 6). If code changed too,
 #   nothing happens until the workflow is run.
@@ -115,17 +117,43 @@ jobs:
       SHA: ${{ needs.plan.outputs.sha }}
       NO_CACHE: ${{ inputs.no_cache && '--no-cache' || '' }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+      # Keys from the target commit's examples, values from the secret or variable of the same name. Fails before
+      # touching a VM if a required one is missing or Compose rejects the result.
+      - name: Write .env and sources.env from secrets and variables
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          VARS_JSON: ${{ toJSON(vars) }}
+        run: |
+          prod=infrastructure/prod
+          mkdir -p "$RUNNER_TEMP/vm1" "$RUNNER_TEMP/vm2"
+          python3 $prod/render_env.py $prod/vm1/.env.example "$RUNNER_TEMP/vm1/.env"
+          python3 $prod/render_env.py $prod/vm1/sources.env.example "$RUNNER_TEMP/vm1/sources.env" --all-required
+          python3 $prod/render_env.py $prod/vm2/.env.example "$RUNNER_TEMP/vm2/.env"
+          install -m 600 "$RUNNER_TEMP/vm1/sources.env" $prod/vm1/sources.env   # compose reads it next to the file
+          docker compose --env-file "$RUNNER_TEMP/vm1/.env" -f $prod/vm1/docker-compose.yml config --quiet
+          docker compose --env-file "$RUNNER_TEMP/vm2/.env" -f $prod/vm2/docker-compose.yml config --quiet
       - *ssh-setup
       # VM 1 first (Airflow, JobManager), then the TaskManagers; a failure on VM 1 stops the rollout.
       - name: Deploy VM 1
         env:
           HOST: ${{ secrets.PROD_VM1_HOST }}
         run: |
+          for f in .env sources.env; do
+            ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+              "set -e; umask 077; d='$REPO_DIR/infrastructure/prod/vm1'; cat > \"\$d/$f.new\"; mv \"\$d/$f.new\" \"\$d/$f\"" \
+              < "$RUNNER_TEMP/vm1/$f"
+          done
           ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
             "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- vm1 '$SHA' $NO_CACHE"
       - name: Deploy VM 2
         env:
           HOST: ${{ secrets.PROD_VM2_HOST }}
         run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; umask 077; d='$REPO_DIR/infrastructure/prod/vm2'; cat > \"\$d/.env.new\"; mv \"\$d/.env.new\" \"\$d/.env\"" \
+            < "$RUNNER_TEMP/vm2/.env"
           ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
             "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- vm2 '$SHA' $NO_CACHE"

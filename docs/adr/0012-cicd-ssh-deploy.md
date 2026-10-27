@@ -3,6 +3,7 @@
 - Status: Proposed
 - Date: 2026-10-26
 - Amends: [roadmap Phase 6](../roadmap.md#phase-6-prod-environment-and-cicd) ("build and push images")
+- Amended by: [ADR-0013](0013-prod-settings-in-github.md) (application secrets move from files on the VMs to GitHub secrets)
 
 ## Context
 

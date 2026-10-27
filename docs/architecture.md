@@ -109,7 +109,7 @@ Why a separate `platform` database instead of tables in `airflow`:
 
 Until Phase 5 the `platform` database exists but is empty. It is created on the first start anyway, because the server's init script only runs on an empty volume; adding it later would mean creating the role and database by hand as the superuser.
 
-Roles on the shared server, one password each: `postgres` (superuser, admin only, stays in the agent stack's `.env`), `airflow` (Airflow, `AIRFLOW_DB_PASSWORD` here), `platform` (run records, `PLATFORM_DB_PASSWORD` once prod uses them) and `agent` (the agent's sessions). Each role can only reach its own database.
+Roles on the shared server, one password each: `postgres` (superuser, admin only, stays in the agent stack's `.env`), `airflow` (Airflow, `AIRFLOW_DB_PASSWORD` here), `platform` (run records, `PLATFORM_DB_PASSWORD` once prod uses them) and `agent` (the agent's sessions). Each role can only reach its own database. How to connect and check every table: [postgresql.md](postgresql.md).
 
 ### 3.5 Ingestion runner
 

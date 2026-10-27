@@ -19,6 +19,7 @@ Statuses: `Proposed` → `Accepted` | `Rejected`, later optionally `Superseded b
 | [0011](0011-shared-postgresql-server.md) | One shared PostgreSQL server, hosted by the onboarding agent stack | Proposed |
 | [0012](0012-cicd-ssh-deploy.md) | Two-stage CI/CD: checks, then a manually approved deploy that builds on the VMs | Proposed (secrets amended by 0013) |
 | [0013](0013-prod-settings-in-github.md) | Every prod setting in GitHub secrets and variables; the Deploy workflow writes the files on the VMs | Proposed |
+| [0014](0014-prod-save-flow.md) | In prod, the UI saves through a pull request; source passwords are set by hand until Key Vault | Proposed |
 
 ## Template
 

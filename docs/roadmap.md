@@ -296,7 +296,7 @@ Complete DAG factory and tasks, `runs` schema, UI run history, dashboards.
 - [ ] Platform and Airflow PostgreSQL in prod, with backups: the shared server of the agent stack on VM 1 ([ADR-0011](adr/0011-shared-postgresql-server.md)); `vm1` Compose joins `data-platform`; `pg_dump` per database
 - [ ] CI/CD ([ADR-0012](adr/0012-cicd-ssh-deploy.md)): CI on every push and pull request; deploy over SSH when someone runs the Deploy workflow (the approval), only for a commit on `main` with green CI, building on each VM; `pipelines/`-only changes sync on their own. *Workflows written; merged branches are deleted by `delete-merged-branch.yml` (2026-10-27, same as data-onboarding-agent); every prod setting is a GitHub secret or variable and the Deploy workflow writes `.env` / `sources.env` on the VMs ([ADR-0013](adr/0013-prod-settings-in-github.md), 2026-10-27, checked locally with `render_env.py` + `docker compose config`); set the GitHub secrets and variables from [infrastructure/prod/README.md](../infrastructure/prod/README.md), then `PROD_DEPLOY_ENABLED=true`*
 - [ ] **Job file sync:** every new or changed file in `pipelines/jobs/` and `pipelines/connections/` is fetched to VM 1 automatically (sync on merge to `main` or a periodic Git pull), so Airflow picks it up without a manual deployment. *Written: `pipelines/`-only changes sync to VM 1 without a rebuild*
-- [ ] Decide how the UI saves in prod: commit or pull request to Git, or direct write followed by a commit
+- [ ] UI save in prod: a pull request per save, merged by the Data Team, synced to VM 1 by the `pipelines/`-only sync; a new `env://` reference adds a line to `vm1/sources.env.example` and a secret set by hand ([ADR-0014](adr/0014-prod-save-flow.md), proposed 2026-10-27). *To build: `SAVE_MODE=pull_request` in the API (branch + pull request through the GitHub API, token limited to Contents and Pull requests), UI message with the link and the secret to add*
 - [ ] Entra ID SSO; roles: DE admin (onboard connections) and user (create jobs on granted connections)
 
 ### Exit criteria
@@ -331,7 +331,7 @@ Prioritized after Phase 6 based on demand:
 | 4 | Largest expected table (rows / GB)? Drives TaskManager size, slot count and timeouts. | Phase 2 | | |
 | 5 | Target catalog: Unity Catalog, Hive Metastore, or path-only for v1? | Phase 7 | | |
 | 6 | Retention for `ingest_date` partitions (keep all, or N days)? | Phase 5 | | |
-| 7 | In prod, does the UI open a pull request for each job, or write directly and commit? | Phase 6 | | |
+| 7 | In prod, does the UI open a pull request for each job, or write directly and commit? | Phase 6 | | Proposed: a pull request per save; new source passwords as GitHub secrets by hand until Key Vault ([ADR-0014](adr/0014-prod-save-flow.md), 2026-10-27) |
 
 ### Resolved
 

@@ -81,6 +81,7 @@ If the VMs can't accept SSH from the internet, run a self-hosted GitHub runner o
 
 ## Open points (Phase 6)
 
-- The Web UI writes job files on VM 1 without a commit (open question 7). `deploy.sh` stops when the checkout has uncommitted changes, so nothing is overwritten; the UI save flow in prod must be decided before go-live.
+- The Web UI writes job files on VM 1 without a commit until [ADR-0014](../../docs/adr/0014-prod-save-flow.md) (proposed: a pull request per save) is built. `deploy.sh` stops when the checkout has uncommitted changes, so nothing is overwritten.
+- **New connection with a new password** (ADR-0014): its pull request adds `NAME=` to `vm1/sources.env.example`; add the secret `NAME` here, merge, then run **Actions → Deploy** once. Until Key Vault (`kv://`) replaces this step.
 - TLS and Entra ID SSO in front of the UI; Airflow keeps one admin user until then.
 - ADLS identity for the TaskManagers and `kv://` secrets.

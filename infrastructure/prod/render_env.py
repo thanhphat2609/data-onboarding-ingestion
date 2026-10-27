@@ -13,6 +13,7 @@ Fails, listing every problem and never printing a value, when:
 - a sensitive key (password, secret, token, key, accounts, webhook) is a variable instead of a secret;
 - a value contains a single quote or a line break (values are written single-quoted, taken literally).
 """
+
 import json
 import os
 import re
@@ -32,7 +33,9 @@ def example_keys(path: str) -> list[tuple[str, bool]]:
     return keys
 
 
-def render(keys: list[tuple[str, bool]], secrets: dict, variables: dict, all_required: bool) -> tuple[list[str], list[str]]:
+def render(
+    keys: list[tuple[str, bool]], secrets: dict, variables: dict, all_required: bool
+) -> tuple[list[str], list[str]]:
     lines, problems = [], []
     for key, required in keys:
         if key in variables and SENSITIVE_RE.search(key):
@@ -64,7 +67,9 @@ def main(argv: list[str]) -> int:
             print(f"::error::{p}")
         return 1
     with open(os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
-        f.write(f"# Written by the Deploy workflow from GitHub secrets and variables ({example}). Don't edit on the VM.\n")
+        f.write(
+            f"# Written by the Deploy workflow from GitHub secrets and variables ({example}). Don't edit on the VM.\n"
+        )
         f.write("\n".join(lines) + "\n")
     filled = sum(1 for line in lines if not line.endswith("=''"))
     print(f"{output}: {len(lines)} keys, {filled} set from GitHub, {len(lines) - filled} empty (compose defaults)")

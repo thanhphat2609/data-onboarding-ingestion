@@ -8,6 +8,7 @@ All repository content is written in **English**: code, comments, docs, YAML, co
 
 - `main` is protected. Work on a branch named `<type>/<short-description>`, for example `feat/sqlserver-template` or `docs/adr-0007`.
 - Open a pull request; at least one review is required.
+- Once the pull request is merged, [delete-merged-branch.yml](.github/workflows/delete-merged-branch.yml) deletes its branch (only while the branch still points at the merged commit; never `main` or a fork's branch). Start the next change from the latest `main` on a new branch.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `build:`, `ci:`.
 
 ## Versioning and releases

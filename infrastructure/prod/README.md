@@ -16,6 +16,8 @@ deploy.sh                Run on a VM by the Deploy workflow: checkout <sha>, bui
 | 2a. Deploy (approval) | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run, then VM 1 and VM 2: `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune images and week-old build cache |
 | 2b. Pipelines sync | CI green on a push to `main` that changed only `pipelines/` | VM 1: `git checkout <sha>` and pool sync, no rebuild; Airflow picks up the files by itself |
 
+Separate from the stages: `.github/workflows/delete-merged-branch.yml` deletes a pull request's branch once it is merged. Run it by hand once (Actions → Delete merged branches → Run workflow) for branches merged before it existed.
+
 **Approving a deploy** = running the workflow: Actions → Deploy → Run workflow → branch `main` → optionally a commit (`sha`, default the latest `main`) and `no_cache` → Run. A commit without a green CI run is refused. Anyone with write access to the repository can run it. When code changed, the push itself deploys nothing; the CI-triggered Deploy run only notes that a manual run is needed.
 
 The build reuses the Docker layer cache (rebuilding PyFlink every time takes minutes) but always pulls newer base images; old images and build cache are pruned after each deploy. Use `no_cache` when a build looks stale.

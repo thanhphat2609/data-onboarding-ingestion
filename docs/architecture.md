@@ -102,6 +102,15 @@ One PostgreSQL 16 instance holds two databases for this repository: Airflow's me
 | `runs` | One row per run, keyed by DAG id and run id: `ingest_date`, Flink job id, expected rows, written rows, output paths, resolved spec, error |
 | `run_events` | Append-only state transitions and diagnostics |
 
+Why a separate `platform` database instead of tables in `airflow`:
+- **Airflow owns its schema.** `airflow db migrate` changes it on upgrades and `airflow db clean` purges old runs, so it is operational state, not a record to keep.
+- **Airflow doesn't model these details:** Flink job id, expected and written rows, output paths, the resolved spec.
+- **Own role and password** (`platform`): the run records survive Airflow upgrades and clean-ups, and Airflow's credentials can't change them.
+
+Until Phase 5 the `platform` database exists but is empty. It is created on the first start anyway, because the server's init script only runs on an empty volume; adding it later would mean creating the role and database by hand as the superuser.
+
+Roles on the shared server, one password each: `postgres` (superuser, admin only, stays in the agent stack's `.env`), `airflow` (Airflow, `AIRFLOW_DB_PASSWORD` here), `platform` (run records, `PLATFORM_DB_PASSWORD` once prod uses them) and `agent` (the agent's sessions). Each role can only reach its own database.
+
 ### 3.5 Ingestion runner
 
 A single generic **PyFlink** program ([ADR-0010](adr/0010-pyflink-runner.md)), written with the Table API and Flink SQL only, so the job itself runs entirely in the JVM. It runs on the JobManager, the only Flink node that needs Python; connectors, JDBC drivers and the `flink-azure-fs-hadoop` plugin are part of the Flink image. It receives the path to a resolved job spec, never a template, and:

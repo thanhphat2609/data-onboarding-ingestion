@@ -35,7 +35,7 @@ jobs:
       - name: Mypy
         working-directory: code/control-plane
         run: mypy --no-incremental src
-      - name: Pytest (offline: fake API, in-memory landing)
+      - name: Pytest (offline, fake API and in-memory landing)
         working-directory: code/control-plane
         run: pytest -q
       - name: Airflow files compile

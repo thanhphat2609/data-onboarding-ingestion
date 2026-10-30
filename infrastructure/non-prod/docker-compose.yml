@@ -1,14 +1,16 @@
-# Non-prod: every service in one Compose project (ADR-0009). Sized for a 4-core / 16 GB Codespace.
+# Non-prod: the platform's services in one Compose project (ADR-0009). Sized for a 4-core / 16 GB Codespace.
 # Start: docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
-# Secrets come from infrastructure/non-prod/.env (created by bootstrap.sh, never committed).
+# Secrets come from infrastructure/non-prod/.env (created by bootstrap.sh, never committed). Source secrets that
+# connections reference as env://<VAR> come from sources.env, like prod's (ADR-0013).
+#
+# The test sources (SQL Server, PostgreSQL, MySQL, a REST API) are a separate project, started by hand for a demo:
+# sample_database/ (README.md there). Like the company's real systems, they are not part of the platform.
 #
 # Metadata DB (ADR-0011): Airflow uses the platform's shared PostgreSQL server, hosted by the
 # data-onboarding-agent stack, over the Docker network `data-platform` (both stacks on one host, as on VM 1).
 # Without that stack, COMPOSE_PROFILES=local-db in .env (bootstrap.sh's default) starts a local PostgreSQL instead.
 
 name: ingestion-nonprod
-
-x-mssql-image: &mssql-image mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
 
 services:
   ui:
@@ -36,14 +38,15 @@ services:
       - "8000:8000"
     environment:
       AIRFLOW_API_URL: http://airflow:8080
-      # Secrets referenced by connections as env://<VAR>. Add a line here for each new reference.
-      CRM_SQLSERVER_RO_PASSWORD: ${CRM_SQLSERVER_RO_PASSWORD:?}
-      SALES_POSTGRES_RO_PASSWORD: ${SALES_POSTGRES_RO_PASSWORD:?run bootstrap.sh to add new secrets}
-      SHOP_MYSQL_RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to add new secrets}
+    # Values of env://<VAR> references, for "Test connection" and the preview (prod: vm1/sources.env).
+    env_file:
+      - path: sources.env
+        required: false
     volumes:
       # The same files Airflow reads: a saved job becomes a DAG without a restart (ADR-0008).
       - ../../pipelines:/workspace/pipelines
       - ../../code/templates:/workspace/code/templates:ro
+    networks: [default, sources]
     mem_limit: 256m
     restart: unless-stopped
 
@@ -99,8 +102,10 @@ services:
       # API jobs (ADR-0015): the fetch task uses the control plane library and lands records on Redpanda.
       PYTHONPATH: /opt/ingestion/control-plane
       LANDING_BOOTSTRAP_SERVERS: redpanda:9092
-      # Secrets of API connections (env://<VAR>): the fetch task calls the API, so they live here, not in Flink.
-      SHOP_API_TOKEN: ${SHOP_API_TOKEN:?run bootstrap.sh to add new secrets}
+    # Values of env://<VAR> references: the fetch task of API jobs calls the API with them (prod: vm1/sources.env).
+    env_file:
+      - path: sources.env
+        required: false
     volumes:
       # One folder per repository on the shared Airflow (ADR-0008).
       - ../../code/airflow/dags:/opt/airflow/dags/ingestion:ro
@@ -114,7 +119,7 @@ services:
       - airflow-logs:/opt/airflow/logs
       # Flink example JARs for the Phase 1 smoke job (filled by the JobManager image).
       - flink-examples:/opt/flink-examples:ro
-    networks: [default, platform]
+    networks: [default, platform, sources]
     depends_on:
       # Only with the local-db profile; the shared server is another Compose project, so start.sh waits for it.
       postgres:
@@ -149,10 +154,10 @@ services:
         execution.runtime-mode: BATCH
         python.client.executable: /opt/pyflink/bin/python
         python.executable: /opt/pyflink/bin/python
-      # Phase 2 spikes read source passwords here; the runner resolves env:// the same way (Phase 4).
-      CRM_SQLSERVER_RO_PASSWORD: ${CRM_SQLSERVER_RO_PASSWORD:?}
-      SALES_POSTGRES_RO_PASSWORD: ${SALES_POSTGRES_RO_PASSWORD:?run bootstrap.sh to add new secrets}
-      SHOP_MYSQL_RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to add new secrets}
+    # Phase 2 spikes read source passwords here; the runner resolves env:// the same way (Phase 4).
+    env_file:
+      - path: sources.env
+        required: false
     volumes:
       # Resolved job specs written by Airflow (ADR-0007).
       - ./data/runs:/opt/ingestion/runs:ro
@@ -166,6 +171,7 @@ services:
       interval: 15s
       retries: 10
       start_period: 20s
+    networks: [default, sources]
     # JVM 1 GB plus the Python client that builds job graphs.
     mem_limit: 1792m
     restart: unless-stopped
@@ -187,6 +193,7 @@ services:
     depends_on:
       flink-jobmanager:
         condition: service_healthy
+    networks: [default, sources]
     mem_limit: 1792m
     restart: unless-stopped
 
@@ -216,115 +223,20 @@ services:
     mem_limit: 768m
     restart: unless-stopped
 
-  # Test API source (ADR-0015): paged JSON orders behind a bearer token; see api-source/server.py.
-  api-source:
-    image: python:3.12.15-slim-bookworm
-    command: ["python", "/app/server.py"]
-    environment:
-      API_TOKEN: ${SHOP_API_TOKEN:?run bootstrap.sh to add new secrets}
-    volumes:
-      - ./api-source:/app:ro
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health', timeout=4)"]
-      interval: 10s
-      retries: 5
-      start_period: 5s
-    mem_limit: 64m
-    restart: unless-stopped
-
-  # Test source with a seeded sample database (crm).
-  sqlserver:
-    image: *mssql-image
-    ports:
-      - "1433:1433"
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: Developer
-      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?}
-      MSSQL_MEMORY_LIMIT_MB: "1536"
-    volumes:
-      - sqlserver-data:/var/opt/mssql
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
-      interval: 15s
-      retries: 10
-      start_period: 30s
-    mem_limit: 2g
-    restart: unless-stopped
-
-  sqlserver-seed:
-    image: *mssql-image
-    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd"]
-    command:
-      - -C
-      - -S
-      - sqlserver
-      - -U
-      - sa
-      - -P
-      - ${MSSQL_SA_PASSWORD}
-      - -b
-      - -i
-      - /seed/seed.sql
-      - -v
-      - RO_PASSWORD=${CRM_SQLSERVER_RO_PASSWORD:?}
-    volumes:
-      - ./sqlserver:/seed:ro
-    depends_on:
-      sqlserver:
-        condition: service_healthy
-    restart: "no"
-
-  # Test source (Phase 2): database `sales`, read-only role svc_ingest_ro. Seeded on the first start of the volume.
-  postgres-source:
-    image: postgres:16.15-alpine
-    environment:
-      POSTGRES_PASSWORD: ${SALES_POSTGRES_ADMIN_PASSWORD:?run bootstrap.sh to add new secrets}
-      POSTGRES_DB: sales
-      RO_PASSWORD: ${SALES_POSTGRES_RO_PASSWORD:?run bootstrap.sh to add new secrets}
-    volumes:
-      - postgres-source-data:/var/lib/postgresql/data
-      - ./postgres-source:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "sales"]
-      interval: 10s
-      retries: 10
-      start_period: 20s
-    mem_limit: 512m
-    restart: unless-stopped
-
-  # Test source (Phase 2): database `shop`, read-only user svc_ingest_ro. Seeded on the first start of the volume.
-  mysql-source:
-    image: mysql:8.4.13
-    command: ["--innodb-buffer-pool-size=256M", "--performance-schema=OFF"]
-    environment:
-      MYSQL_ROOT_PASSWORD: ${SHOP_MYSQL_ROOT_PASSWORD:?run bootstrap.sh to add new secrets}
-      MYSQL_DATABASE: shop
-      RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to add new secrets}
-    volumes:
-      - mysql-source-data:/var/lib/mysql
-      - ./mysql-source:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
-      interval: 10s
-      retries: 15
-      start_period: 40s
-    mem_limit: 768m
-    restart: unless-stopped
-
 networks:
   default: {}
   # Created by the data-onboarding-agent stack (or by bootstrap.sh when running standalone).
   platform:
     name: data-platform
     external: true
+  # Shared with sample_database/ (the test sources), so connections reach them by name; created by bootstrap.sh.
+  sources:
+    name: ingestion-sources
+    external: true
 
 volumes:
   postgres-data:   # local-db profile only
   airflow-logs:
-  sqlserver-data:
-  postgres-source-data:
-  mysql-source-data:
   redpanda-data:
   # Filled from the JobManager image on first start; Airflow reads the smoke-job JAR from it.
   flink-examples:

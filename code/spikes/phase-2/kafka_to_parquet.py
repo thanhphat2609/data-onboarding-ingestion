@@ -5,7 +5,7 @@ job reads exactly [start, end) of partition 0 as the table `landing`, runs the j
 FINISHED by itself (scan.bounded.mode), like the JDBC jobs (ADR-0002).
 
 Run on the JobManager (see README.md), with the offsets from the fetch task's log ("offsets [start, end)") after
-"Run now" on ingest__shop-api-orders-daily:
+"Run now" on ingest__shop-api-orders-daily (create it first: infrastructure/non-prod/sample_database/README.md):
   flink run -py /opt/spikes/phase-2/kafka_to_parquet.py --topic ingest.shop-api-orders-daily --start 0 --end 100
 Output: <out>/api/<topic>/ingest_date=<date>/part-*.parquet; check it with check_parquet.py.
 """

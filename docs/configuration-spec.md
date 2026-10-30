@@ -209,7 +209,7 @@ landing:
 
 Pagination: `page` sends `page_param` = 1, 2, ... and `page_size_param`; `offset` sends `page_param` = 0, 100, ... (the records read so far). Both stop at a page shorter than `page_size`. `cursor` sends the value at `cursor_path` of the previous response as `cursor_param` and stops when it is empty. The run fails beyond `max_pages`, on HTTP 4xx other than 429, and after 5 failed attempts on 429 or 5xx.
 
-Example job (`pipelines/jobs/shop-api-orders-daily.yaml`):
+Example job (`infrastructure/non-prod/sample_database/examples/jobs/shop-api-orders-daily.yaml`, created in the Web UI during a demo):
 
 ```yaml
 connection: shop-api-nonprod

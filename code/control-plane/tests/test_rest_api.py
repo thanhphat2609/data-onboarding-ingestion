@@ -214,15 +214,6 @@ def test_flink_sql_reads_only_the_landing_table() -> None:
     assert [i.message for i in bad.issues] == ["Read only from the table landing, not orders: the API data lands there"]
 
 
-def test_sample_pipeline_files_are_valid() -> None:
-    from ingestion.settings import Settings
-    from ingestion.store import ConfigStore
-
-    store = ConfigStore(Settings.from_env(), REGISTRY)
-    assert store.invalid_files() == []
-    assert "shop-api-orders-daily" in {j["name"] for j in store.list_jobs()}
-
-
 def test_only_the_api_template_declares_a_fetch_task() -> None:
     # The DAG factory adds `fetch` before `submit` from this field, not from `connector: kafka`.
     assert {t.name: t.body.get("fetch") for t in REGISTRY.sources()} == {

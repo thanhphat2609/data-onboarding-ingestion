@@ -6,7 +6,8 @@ Everything that defines containers and environments ([ADR-0009](../docs/adr/0009
 docker/ui/       Web UI image (static build served by nginx, proxies /api)
 docker/api/      Ingestion API image (code/control-plane)
 docker/flink/    Flink image: JDBC connector and drivers, Parquet, ADLS plugin; target jobmanager adds PyFlink
-non-prod/        One Compose project with every service, for GitHub Codespaces
+non-prod/        One Compose project with the platform's services, for GitHub Codespaces
+non-prod/sample_database/  Test sources (SQL Server, PostgreSQL, MySQL, a REST API), started by hand for demos
 prod/            Two VMs, deployed by GitHub Actions (draft until the VMs exist, see prod/README.md)
 ```
 
@@ -17,17 +18,27 @@ Airflow uses `docker/airflow/` (the upstream image plus `confluent-kafka` for AP
 | Service | Port | Notes |
 |---|---|---|
 | Web UI | 3000 | Calls the Ingestion API through `/api` on the same port; `API_MODE=mock` in `.env` switches back to the in-browser mock |
-| Ingestion API | 8000 | Writes `pipelines/connections/` and `pipelines/jobs/`, which Airflow reads; docs at `/api/docs`. Every `env://<VAR>` a connection uses must be listed in its `environment` |
-| Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod. Runs the `fetch` task of API jobs, so the tokens of API connections (`env://`) are in its `environment` |
+| Ingestion API | 8000 | Writes `pipelines/connections/` and `pipelines/jobs/`, which Airflow reads; docs at `/api/docs` |
+| Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod. Runs the `fetch` task of API jobs |
 | Flink web UI | 8081 | Session cluster: one JobManager, one TaskManager with 4 slots |
-| SQL Server | 1433 | Sample database `crm`, read-only login `svc_ingest_ro` |
-| PostgreSQL source | internal | Phase 2 test source: database `sales`, read-only role `svc_ingest_ro` (`env://SALES_POSTGRES_RO_PASSWORD`) |
-| MySQL source | internal | Phase 2 test source: database `shop`, read-only user `svc_ingest_ro` (`env://SHOP_MYSQL_RO_PASSWORD`) |
-| Redpanda | internal | Landing for API sources: Kafka API `redpanda:9092`, one topic `ingest.<job>` per API job, 7-day retention. `docker compose -f infrastructure/non-prod/docker-compose.yml exec redpanda rpk topic consume ingest.shop-api-orders-daily -n 3` |
-| API source | internal | Test REST API `http://api-source:8000/v1/orders` (paged JSON, bearer `env://SHOP_API_TOKEN`, a 429 on every 7th request); connection `shop-api-nonprod` |
-
-The three test sources share one model: `segments`, `customers` (10,000 rows) and `orders`, empty until `bash infrastructure/non-prod/seed-large.sh` fills it with 10M rows. After pulling new services, run `bootstrap.sh` again: it adds new variables from `.env.example` to an existing `.env`.
+| Redpanda | internal | Landing for API sources: Kafka API `redpanda:9092`, one topic `ingest.<job>` per API job, 7-day retention. `docker compose -f infrastructure/non-prod/docker-compose.yml exec redpanda rpk topic consume ingest.<job> -n 3` |
 | PostgreSQL | internal | Databases `airflow` and `platform`. The shared server or a local container, see below |
+
+After pulling new services, run `bootstrap.sh` again: it adds new variables from the `.env.example` files to the existing `.env` files.
+
+### Source secrets: `sources.env`
+
+Connections reference passwords and tokens as `env://<VAR>`. The values are in `infrastructure/non-prod/sources.env`, read by the API (Test connection, preview), Airflow (the `fetch` task) and Flink. It is the non-prod twin of prod's `vm1/sources.env`, which the Deploy workflow writes from GitHub secrets ([ADR-0013](../docs/adr/0013-prod-settings-in-github.md)). `bootstrap.sh` fills the keys of `sources.env.example` from `sample_database/.env`. For another source, add its line to `sources.env`, then `docker compose -f infrastructure/non-prod/docker-compose.yml up -d` to recreate the containers that read it.
+
+### Test sources: `sample_database/`
+
+SQL Server, PostgreSQL, MySQL and a REST API, each with a read-only login, in their own Compose project. Like the company's real systems, they are not part of the platform: start them by hand, then onboard them in the Web UI. `pipelines/` starts empty. Demo, step by step, and the example connection and job files: [non-prod/sample_database/README.md](non-prod/sample_database/README.md).
+
+```bash
+docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml up -d
+```
+
+They reach the platform over the Docker network `ingestion-sources`, created by `bootstrap.sh`.
 
 ### Metadata DB: shared server or local
 
@@ -47,7 +58,7 @@ How to connect to either one and check every table: [docs/postgresql.md](../docs
 In a Codespace this happens automatically: `bootstrap.sh` runs once on create and the stack starts on every start. Elsewhere, from the repository root:
 
 ```bash
-bash infrastructure/non-prod/bootstrap.sh     # creates .env with random secrets
+bash infrastructure/non-prod/bootstrap.sh     # creates the .env files with random secrets, and sources.env
 docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build
 ```
 
@@ -63,11 +74,11 @@ docker compose stop                     # free memory, keep data
 docker compose up -d --build ui         # rebuild the UI after changes
 ```
 
-### Try the sample job
+### Try a job
 
-The sample `pipelines/jobs/crm-customers-daily.yaml` appears in Airflow as DAG `ingest__crm-customers-daily` (new DAGs start paused). Unpause it and trigger it; in Phase 1 it runs Flink's WordCount example on the session cluster, visible in the Flink web UI.
+`pipelines/` starts empty. Start the sample databases and create a connection and a job in the Web UI, step by step: [non-prod/sample_database/README.md](non-prod/sample_database/README.md). The job appears in Airflow as DAG `ingest__<name>` (new DAGs start paused); in Phase 1 a run executes Flink's WordCount example on the session cluster, visible in the Flink web UI.
 
-After adding or changing a connection file, refresh its pool (or restart Airflow):
+After adding or changing a connection file by hand (the Web UI does this for you), refresh its pool (or restart Airflow):
 
 ```bash
 docker compose exec airflow bash -c "python /opt/airflow/scripts/sync_pools.py > /tmp/pools.json && airflow pools import /tmp/pools.json"
@@ -78,11 +89,12 @@ To work on the UI with hot reload, run `npm ci && npm run dev -- --port 5173` in
 ### Reset
 
 ```bash
-docker compose -f infrastructure/non-prod/docker-compose.yml down -v   # deletes all data volumes
+docker compose -f infrastructure/non-prod/docker-compose.yml down -v                    # deletes all data volumes
+docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml down -v    # and the sample databases
 rm -rf infrastructure/non-prod/data
 ```
 
-On one host the two stacks don't clash: the agent stack publishes only `127.0.0.1:7860` (app) and `127.0.0.1:5432` (PostgreSQL); its SearXNG container has no host port. This stack uses 3000, 8000, 8080, 8081 and 1433. Never combine `local-db` with the agent stack on one host: Airflow would see two `postgres` containers.
+On one host the two stacks don't clash: the agent stack publishes only `127.0.0.1:7860` (app) and `127.0.0.1:5432` (PostgreSQL); its SearXNG container has no host port. This stack uses 3000, 8000, 8080 and 8081 (and 1433 while the sample databases run). Never combine `local-db` with the agent stack on one host: Airflow would see two `postgres` containers.
 
 `.env` is kept; delete it as well to get new secrets. In shared mode `down -v` doesn't touch the metadata DB, which lives in the agent stack's volume. Reset it there, or drop and recreate the `airflow` database.
 

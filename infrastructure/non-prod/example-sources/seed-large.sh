@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fills the `orders` table of the test sources with ROWS rows (default 10,000,000) for the Phase 2 throughput
 # tests. Run manually once the stack is up; the normal start stays fast. Skips a source that already has the rows.
-# Usage: bash infrastructure/non-prod/seed-large.sh [sqlserver|postgres|mysql ...]
+# Usage: bash infrastructure/non-prod/example-sources/seed-large.sh [sqlserver|postgres|mysql ...]
 set -euo pipefail
 
 cd "$(dirname "$0")"

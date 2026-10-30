@@ -1,0 +1,37 @@
+# Example source: MySQL, database shop, read-only user svc_ingest_ro (seeded on the first start of the volume) (non-prod only; it plays one of the company's systems). Demo: ../README.md.
+# Start alone:   docker compose -f infrastructure/non-prod/example-sources/mysql/docker-compose.yml up -d
+# Start all:     docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml up -d
+# Secrets: .env next to this file (from .env.example, created by ../../bootstrap.sh). The read-only login is handed to
+# the platform through ../../sources.env, like a GitHub secret in prod (ADR-0013).
+
+# Same project name in every source file, so a source started alone and "start all" are the same containers.
+name: ingestion-example-sources
+
+services:
+  mysql-source:
+    image: mysql:8.4.13
+    command: ["--innodb-buffer-pool-size=256M", "--performance-schema=OFF"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SHOP_MYSQL_ROOT_PASSWORD:?run bootstrap.sh to create .env}
+      MYSQL_DATABASE: shop
+      RO_PASSWORD: ${SHOP_MYSQL_RO_PASSWORD:?run bootstrap.sh to create .env}
+    volumes:
+      - mysql-source-data:/var/lib/mysql
+      - ./01-shop.sh:/docker-entrypoint-initdb.d/01-shop.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      retries: 15
+      start_period: 40s
+    mem_limit: 768m
+    restart: unless-stopped
+
+networks:
+  # Shared with the platform stack (api, airflow, flink), which reaches the source by its service name; created by
+  # ../../bootstrap.sh.
+  default:
+    name: ingestion-sources
+    external: true
+
+volumes:
+  mysql-source-data:

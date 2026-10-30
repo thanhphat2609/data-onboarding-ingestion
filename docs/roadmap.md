@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-10-26 · Current phase: **Phase 2: Connector spikes**
+Last updated: 2026-10-30 · Current phase: **Phase 2: Connector spikes**
 
 > **Where we left off (2026-10-26).** Phase 1 closed (`v0.1.0`). Phase 2 groundwork is on `main` but nothing has run in Docker yet: Flink image (builds in CI), PostgreSQL and MySQL test sources, spike jobs in `code/spikes/phase-2/`, results template in [spikes/phase-2.md](spikes/phase-2.md). CI runs on every push (green); the Deploy workflow is ready but off until the VMs exist ([ADR-0012](adr/0012-cicd-ssh-deploy.md)).
 >
@@ -10,7 +10,8 @@ Last updated: 2026-10-26 · Current phase: **Phase 2: Connector spikes**
 > 3. JDBC spikes (`code/spikes/phase-2/README.md`): table mode on all three sources, `check_parquet.py`, query mode, REST submission with `PythonDriver`; then `seed-large.sh` and the 10M-row throughput runs. Fill [spikes/phase-2.md](spikes/phase-2.md) as you go.
 > 4. Needed from the user, as Codespaces secrets: ADLS Gen2 dev account (hierarchical namespace on, container `data-onboarding-ingestion`) + service principal (spike 8), BigQuery test project + service account JSON (spike 9). The user also plans their own PostgreSQL and MySQL test databases: onboard them in the UI with the new templates.
 > 4b. Done early (2026-10-26, from Phase 3): source templates `postgresql@1` and `mysql@1`, with Test connection and preview in the API (psycopg, PyMySQL) and sample connections to the non-prod test sources. Verify both in the Codespace with step 1.
-> 5. After that: Delta commit spike, Parquet timestamps in Spark, then the REST API source ADR.
+> 5. After that: Delta commit spike, Parquet timestamps in Spark.
+> 5b. Done early (2026-10-30): REST API source decided in [ADR-0015](adr/0015-rest-api-source-via-redpanda.md) (Airflow `fetch` → Redpanda → Flink reads the run's offsets). Template `rest_api@1`, `fetch` task, Redpanda and a test API (`api-source`) in non-prod, sample job `shop-api-orders-daily`. Checked outside the Codespace (2026-10-30): `airflow dags test ingest__shop-api-orders-daily` on Airflow 3.3.2 ran `validate → fetch → submit → wait` against a real Redpanda v25.3.18 and the test API (a 429 retried, offsets [200, 300) handed to `submit`, no token in the logs); Flink 1.20.3 with the Kafka connector read offsets [100, 200) to Parquet and stopped by itself (`FINISHED`, exactly 100 rows). Still to run in the Codespace: `docker compose up --build` with the new Airflow image, "Run now" on `ingest__shop-api-orders-daily`, then spike 12 (`kafka_to_parquet.py` from PyFlink).
 > 6. When the prod VMs exist: [infrastructure/prod/README.md](../infrastructure/prod/README.md) (VM setup, GitHub secrets, `PROD_DEPLOY_ENABLED=true`), deploying data-onboarding-agent first.
 
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
@@ -179,7 +180,8 @@ Sources, in order: **SQL Server, PostgreSQL, MySQL, BigQuery**. A REST API sourc
 - [ ] Spike: Parquet timestamp encoding written by Flink is readable by Spark, pandas and Delta readers
 - [ ] Measure throughput (rows/s per slot) per source for sizing defaults and the TaskManager slot count
 - [ ] Pin connector and library versions; record results in [`docs/spikes/phase-2.md`](spikes/phase-2.md) (spike jobs in `code/spikes/phase-2/`)
-- [ ] After the four sources: spike a REST API source (paginated JSON over HTTP → Parquet). Flink has no generic HTTP source, so compare a PyFlink-side fetch, a custom source and an Airflow-side fetch; record the choice in an ADR
+- [x] After the four sources: spike a REST API source (paginated JSON over HTTP → Parquet). Flink has no generic HTTP source, so compare a PyFlink-side fetch, a custom source and an Airflow-side fetch; record the choice in an ADR. *Decided in [ADR-0015](adr/0015-rest-api-source-via-redpanda.md) (2026-10-30): Airflow `fetch` → Redpanda → bounded Flink read*
+- [ ] Verify ADR-0015 in a Codespace: Airflow image with `confluent-kafka`, "Run now" on `ingest__shop-api-orders-daily` (`fetch` logs the offsets), `kafka_to_parquet.py` from PyFlink on those offsets
 
 ### Deliverables
 

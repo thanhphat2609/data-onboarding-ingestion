@@ -6,7 +6,11 @@
 name: ingestion-prod
 
 x-airflow: &airflow
-  image: apache/airflow:3.3.2
+  # apache/airflow plus confluent-kafka for the fetch task of API jobs (ADR-0015).
+  build:
+    context: ../../..
+    dockerfile: infrastructure/docker/airflow/Dockerfile
+  image: ingestion-airflow:prod
   environment: &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?}@${METADATA_DB_HOST:-postgres}:5432/airflow
@@ -25,12 +29,15 @@ x-airflow: &airflow
     INGESTION_RUN_DIR: /opt/ingestion/runs
     FLINK_REST_URL: http://flink-jobmanager:8081
     FLINK_SMOKE_JAR: /opt/flink-examples/streaming/WordCount.jar
+    PYTHONPATH: /opt/ingestion/control-plane
+    LANDING_BOOTSTRAP_SERVERS: redpanda:9092
   volumes:
     - ../../../code/airflow/dags:/opt/airflow/dags/ingestion:ro
     - ../../../code/airflow/scripts:/opt/airflow/scripts:ro
     - ../../../pipelines/jobs:/opt/airflow/projects/ingestion/jobs:ro
     - ../../../pipelines/connections:/opt/airflow/projects/ingestion/connections:ro
     - ../../../code/templates:/opt/airflow/projects/ingestion/templates:ro
+    - ../../../code/control-plane/src:/opt/ingestion/control-plane:ro
     - runs:/opt/ingestion/runs
     - airflow-logs:/opt/airflow/logs
     - flink-examples:/opt/flink-examples:ro
@@ -125,6 +132,32 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  # Landing for API sources (ADR-0015). Kafka API on redpanda:9092; the TaskManagers on VM 2 read it through the
+  # published port at FLINK_JOBMANAGER_ADDRESS:19092 (VM 1's private address). Sizing is open (roadmap question 8).
+  redpanda:
+    image: redpandadata/redpanda:v25.3.18
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=${REDPANDA_MEMORY:-1G}
+      - --overprovisioned
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://${FLINK_JOBMANAGER_ADDRESS:?private address of VM 1}:19092
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"   # Kafka API, from the TaskManagers on VM 2
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 15s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
   flink-jobmanager:
     build:
       context: ../../..
@@ -168,6 +201,7 @@ networks:
     external: true
 
 volumes:
+  redpanda-data:
   runs:
   airflow-logs:
   flink-examples:

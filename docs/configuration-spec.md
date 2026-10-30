@@ -35,14 +35,16 @@ Describes a source **type**. Adding a new database of an existing type does not 
 |---|---|---|
 | `kind` | yes | `SourceTemplate` |
 | `name`, `version` | yes | Version is an integer; bump on any breaking change |
-| `connector` | yes | `jdbc` or `bigquery` |
-| `dialect` | yes | sqlglot dialect: `tsql`, `postgres`, `bigquery` |
+| `connector` | yes | `jdbc`, `bigquery`, or `kafka` (API sources: Flink reads a landing topic, [ADR-0015](adr/0015-rest-api-source-via-redpanda.md)) |
+| `dialect` | yes | sqlglot dialect: `tsql`, `postgres`, `mysql`, `bigquery`; `flink` for API sources (Flink SQL over the table `landing`) |
 | `driver` | jdbc | JDBC driver class |
 | `url` | jdbc | Jinja template for the JDBC URL |
 | `connection_params` | yes | Parameters a `Connection` must provide |
 | `read_params` | yes | Parameters an `IngestionJob` may set under `source.read` |
-| `preflight` | yes | Dialect-specific SQL templates: `preview`, `count`, `bounds`. `{{ query }}` is an AST-rewritten query, never raw user text |
-| `type_mapping` | yes | Source type → Flink SQL type |
+| `fetch` | no | A task the DAG runs before `submit` to land the data first. Only `rest_api` (API → Redpanda, [ADR-0015](adr/0015-rest-api-source-via-redpanda.md)); omitted: Flink reads the source itself |
+| `landing` | kafka | `topic` (per job, `{{ job }}`) and `table`: the Flink `CREATE TABLE landing` with `{{ topic }}`, `{{ bootstrap_servers }}`, `{{ start_offset }}`, `{{ end_offset }}` |
+| `preflight` | jdbc, bigquery | Dialect-specific SQL templates: `preview`, `count`, `bounds`. `{{ query }}` is an AST-rewritten query, never raw user text |
+| `type_mapping` | jdbc, bigquery | Source type → Flink SQL type |
 | `unsupported_types` | no | Types rejected at preflight with a `CAST` suggestion |
 | `runtime_env` | no | Environment variables the runner needs (mapped from secrets) |
 
@@ -164,6 +166,65 @@ read_params:
 #   AS {{ query }}
 ```
 
+### `code/templates/sources/rest_api.yaml` (differences)
+
+API sources ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)). The Airflow task `fetch` calls the API and lands one message per record on the job's Redpanda topic; Flink reads the run's offsets as the table `landing`. No `preflight` or `type_mapping`: the row count comes from `fetch`, and the record's JSON stays a `STRING`.
+
+```yaml
+kind: SourceTemplate
+name: rest_api
+version: 1
+connector: kafka
+dialect: flink
+fetch: rest_api    # adds the task `fetch` before `submit` in the DAG
+
+connection_params:
+  base_url:                { type: string, required: true }
+  auth:                    { type: enum, values: [none, bearer, header, query], default: bearer }
+  auth_name:               { type: string, description: "Header or query parameter name (auth: header / query)" }
+  token:                   { type: secret_ref, description: "Required unless auth is none" }
+  timeout:                 { type: duration, default: 30s }
+  max_requests_per_second: { type: int, default: 5, min: 1, max: 100 }
+
+read_params:
+  endpoint:        { type: string, required: true, description: "{{ ingest_date }} is replaced" }
+  query_string:    { type: string, description: "updated_date={{ ingest_date }}&status=all" }
+  records_path:    { type: string, description: "Dot path to the list of records; empty = the response is the list" }
+  pagination:      { type: enum, values: [none, page, offset, cursor], default: none }
+  page_param:      { type: string, default: page }
+  page_size_param: { type: string, default: page_size }
+  page_size:       { type: int, default: 100, min: 1, max: 10000 }
+  cursor_path:     { type: string }
+  cursor_param:    { type: string, default: cursor }
+  max_pages:       { type: int, default: 1000, min: 1, max: 100000 }
+
+landing:
+  topic: "ingest.{{ job }}"
+  table: |
+    CREATE TABLE landing (payload STRING, _offset BIGINT METADATA FROM 'offset' VIRTUAL,
+      _fetched_at TIMESTAMP_LTZ(3) METADATA FROM 'timestamp' VIRTUAL)
+    WITH ('connector' = 'kafka', 'format' = 'raw', 'scan.startup.mode' = 'specific-offsets',
+      'scan.bounded.mode' = 'specific-offsets', ...)   # full text in the file
+```
+
+Pagination: `page` sends `page_param` = 1, 2, ... and `page_size_param`; `offset` sends `page_param` = 0, 100, ... (the records read so far). Both stop at a page shorter than `page_size`. `cursor` sends the value at `cursor_path` of the previous response as `cursor_param` and stops when it is empty. The run fails beyond `max_pages`, on HTTP 4xx other than 429, and after 5 failed attempts on 429 or 5xx.
+
+Example job (`pipelines/jobs/shop-api-orders-daily.yaml`):
+
+```yaml
+connection: shop-api-nonprod
+source:
+  query: |
+    SELECT CAST(JSON_VALUE(payload, '$.order_id') AS BIGINT) AS order_id, payload, _fetched_at
+    FROM landing
+  read:
+    endpoint: /orders
+    query_string: updated_date={{ ingest_date }}
+    records_path: data
+    pagination: page
+    page_size: 50
+```
+
 ---
 
 ## SinkTemplate
@@ -264,7 +325,7 @@ access:
 | `name` | yes | Immutable; DAG id is `ingest__<name>`. Recommended pattern `<system>-<dataset>-<frequency>` |
 | `owner` | yes | Team or person accountable for the job |
 | `connection` | yes | `Connection` name |
-| `source.query` | yes | Read-only SQL in the connection's dialect |
+| `source.query` | yes | Read-only SQL in the connection's dialect; for API sources Flink SQL over the table `landing` |
 | `source.read` | no | Overrides for the template's `read_params` |
 | `sink.template` | yes | `<sink-template>@<version>` |
 | `sink.params` | yes | Values for the sink template's `params` |
@@ -288,6 +349,7 @@ The DAG factory turns each job into one DAG ([ADR-0008](adr/0008-airflow-dag-per
 | `connection` | Tag `connection:<connection>`, pool `conn__<connection>` |
 | connection template | Tag `source:<template>` |
 | `tags` | DAG tags, plus `ingestion` |
+| `fetch` in the connection's source template | A `fetch` task before `submit` (`rest_api`: API → Redpanda) |
 | `runtime.retries`, `runtime.timeout` | Whole-run retries and timeout |
 | `sink` | Outlet `Asset(<table root URI>)` on the `publish` task, for downstream DAGs |
 

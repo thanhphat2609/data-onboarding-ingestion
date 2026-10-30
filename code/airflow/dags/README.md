@@ -18,6 +18,8 @@ Every DAG has `max_active_runs=1`, `catchup=False` and an `ingest_date` paramete
 
 **Validation per file:** the job and its connection are checked against `code/templates/schemas/*.json`, the file name must equal `name`, and the connection and templates must exist. An invalid file is skipped with a one-line reason in the DAG processor log; every other DAG keeps loading.
 
+**API jobs** (source template with `fetch: rest_api`; `connector: kafka` alone adds nothing, [ADR-0015](../../../docs/adr/0015-rest-api-source-via-redpanda.md)) get `validate → fetch → submit → wait`. `fetch` runs `ingestion.rest_api.fetch_to_landing` (the control plane on `PYTHONPATH`): it pages through the API, lands one Redpanda message per record on `ingest.<job>` (`LANDING_BOOTSTRAP_SERVERS`, default `redpanda:9092`), and passes `{topic, start_offset, end_offset, records, pages}` to `submit`. API tokens (`env://`) must be in the Airflow environment.
+
 **Tasks (Phase 1):** `validate → submit → wait`. `submit` runs Flink's bundled WordCount example on the session cluster to prove the wiring; the PyFlink runner replaces it in Phase 4, and preflight, verify and publish (with the table Asset) arrive in Phase 5.
 
 ## `../scripts/sync_pools.py`

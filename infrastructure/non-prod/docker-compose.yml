@@ -8,7 +8,6 @@
 
 name: ingestion-nonprod
 
-x-airflow-image: &airflow-image apache/airflow:3.3.2
 x-mssql-image: &mssql-image mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
 
 services:
@@ -70,7 +69,11 @@ services:
   # All Airflow components in one process tree (api-server, scheduler, dag-processor, triggerer).
   # Lighter than one container per component; prod uses separate services (Phase 6).
   airflow:
-    image: *airflow-image
+    # apache/airflow plus confluent-kafka for the fetch task of API jobs (ADR-0015).
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/airflow/Dockerfile
+    image: ingestion-airflow:dev
     # Migrates the database, creates pools from connection files, then runs `airflow standalone`.
     command: ["bash", "/opt/airflow/start.sh"]
     ports:
@@ -93,6 +96,11 @@ services:
       INGESTION_RUN_DIR: /opt/ingestion/runs
       FLINK_REST_URL: http://flink-jobmanager:8081
       FLINK_SMOKE_JAR: /opt/flink-examples/streaming/WordCount.jar
+      # API jobs (ADR-0015): the fetch task uses the control plane library and lands records on Redpanda.
+      PYTHONPATH: /opt/ingestion/control-plane
+      LANDING_BOOTSTRAP_SERVERS: redpanda:9092
+      # Secrets of API connections (env://<VAR>): the fetch task calls the API, so they live here, not in Flink.
+      SHOP_API_TOKEN: ${SHOP_API_TOKEN:?run bootstrap.sh to add new secrets}
     volumes:
       # One folder per repository on the shared Airflow (ADR-0008).
       - ../../code/airflow/dags:/opt/airflow/dags/ingestion:ro
@@ -101,6 +109,7 @@ services:
       - ../../pipelines/connections:/opt/airflow/projects/ingestion/connections:ro
       - ../../code/templates:/opt/airflow/projects/ingestion/templates:ro
       - ./airflow/start.sh:/opt/airflow/start.sh:ro
+      - ../../code/control-plane/src:/opt/ingestion/control-plane:ro
       - ./data/runs:/opt/ingestion/runs
       - airflow-logs:/opt/airflow/logs
       # Flink example JARs for the Phase 1 smoke job (filled by the JobManager image).
@@ -112,6 +121,8 @@ services:
         condition: service_healthy
         required: false
       flink-jobmanager:
+        condition: service_healthy
+      redpanda:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "-s", "http://localhost:8080/api/v2/monitor/health"]
@@ -177,6 +188,48 @@ services:
       flink-jobmanager:
         condition: service_healthy
     mem_limit: 1792m
+    restart: unless-stopped
+
+  # Landing for API sources (ADR-0015): Kafka API on redpanda:9092, one single-partition topic per API job, kept for
+  # 7 days (Redpanda's default retention). Flink reads a run's offset range as a bounded table.
+  redpanda:
+    image: redpandadata/redpanda:v25.3.18
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --default-log-level=warn
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 10s
+      retries: 10
+      start_period: 20s
+    mem_limit: 768m
+    restart: unless-stopped
+
+  # Test API source (ADR-0015): paged JSON orders behind a bearer token; see api-source/server.py.
+  api-source:
+    image: python:3.12.15-slim-bookworm
+    command: ["python", "/app/server.py"]
+    environment:
+      API_TOKEN: ${SHOP_API_TOKEN:?run bootstrap.sh to add new secrets}
+    volumes:
+      - ./api-source:/app:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health', timeout=4)"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    mem_limit: 64m
     restart: unless-stopped
 
   # Test source with a seeded sample database (crm).
@@ -272,5 +325,6 @@ volumes:
   sqlserver-data:
   postgres-source-data:
   mysql-source-data:
+  redpanda-data:
   # Filled from the JobManager image on first start; Airflow reads the smoke-job JAR from it.
   flink-examples:

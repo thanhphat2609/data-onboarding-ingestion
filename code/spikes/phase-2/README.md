@@ -22,6 +22,7 @@ alias jm='docker compose -f infrastructure/non-prod/docker-compose.yml exec flin
 | Partitioned scan, 10M rows | `jm flink run -py /opt/spikes/phase-2/jdbc_to_parquet.py --source mysql --table orders --partitions 4` |
 | Query mode (JOIN + CTE as a derived table) | `jm flink run -py /opt/spikes/phase-2/jdbc_to_parquet.py --source sqlserver --mode query` |
 | Submit through REST with PythonDriver | `jm python /opt/spikes/phase-2/submit_rest.py /opt/spikes/phase-2/jdbc_to_parquet.py --source sqlserver` |
+| API landing topic → Parquet, bounded by offsets (ADR-0015) | `jm flink run -py /opt/spikes/phase-2/kafka_to_parquet.py --topic ingest.shop-api-orders-daily --start <start> --end <end>` (offsets from the `fetch` log of `ingest__shop-api-orders-daily`) |
 | Read the output back | `jm python /opt/spikes/phase-2/check_parquet.py /opt/ingestion/spike-out/postgres/customers` |
 | Write to ADLS (needs credentials) | add `--out abfss://data-onboarding-ingestion@<account>.dfs.core.windows.net/spikes` |
 

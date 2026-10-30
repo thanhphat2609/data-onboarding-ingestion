@@ -16,7 +16,7 @@ The design is inspired by Grab's [one-click ingestion platform](https://engineer
 
 ### Goals (v1)
 
-- Sources: **SQL Server**, **PostgreSQL**, **MySQL**, **BigQuery**; a **REST API** source is planned after them (approach decided in Phase 2).
+- Sources: **SQL Server**, **PostgreSQL**, **MySQL**, **BigQuery**, and **REST APIs** through a landing topic on Redpanda ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)).
 - Destination: **Azure Data Lake Storage Gen2** (Blob Storage with hierarchical namespace).
 - Formats: **Parquet** and **Delta Lake**, partitioned by `ingest_date`.
 - Users can write **free-form read-only SQL** (joins, CTEs, aggregations).
@@ -45,7 +45,7 @@ The design is inspired by Grab's [one-click ingestion platform](https://engineer
 
 In non-prod every component runs in one Docker Compose project on GitHub Codespaces ([ADR-0009](adr/0009-environments.md)).
 
-The control plane and Airflow never move data. Flink never decides whether a run succeeded.
+The control plane and Airflow never move data, with one exception: for API sources, Airflow's `fetch` task lands the API's records on Redpanda, so Flink never calls an API ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)). Flink never decides whether a run succeeded.
 
 ## 3. Components
 
@@ -90,6 +90,7 @@ Airflow 3 orchestrates every run ([ADR-0008](adr/0008-airflow-dag-per-job.md)):
 - Tasks: preflight → render → submit → wait → verify → publish, each calling the shared library. `wait` is deferrable and polls the Flink REST API.
 - `max_active_runs=1` per DAG; pool `conn__<connection>` limits concurrent runs per connection; a slot pool limits the total parallelism sent to Flink.
 - On-demand runs from the UI or the CLI trigger the same DAG through the Airflow REST API.
+- **API sources** (`rest_api` template, which declares `fetch: rest_api`) get a `fetch` task before `submit`: it pages through the API, writes one Redpanda message per record to the job's topic `ingest.<job>` and hands the run's offsets to `submit` (§3.9).
 - The `publish` task emits an Airflow Asset for the table root URI, so downstream DAGs (for example dbt in another repository) run when the table is published.
 - Airflow is shared: each repository owns `dags/<repo>/` and `projects/<repo>/` on the Airflow host; this repository's DAGs live in `dags/ingestion/`.
 
@@ -146,6 +147,21 @@ A standalone session cluster ([ADR-0007](adr/0007-flink-standalone-session-clust
 - Flink web UI on the JobManager for running and recently finished jobs.
 - Flink metrics through the Prometheus reporter; Grafana dashboards per run and per connection; Flink History Server for older jobs (Phase 5).
 - Run counts, output paths and errors in the `runs` table, exposed by the API and shown in the UI.
+
+### 3.9 Landing topics for API sources (Redpanda)
+
+REST APIs differ in auth, pagination, rate limits and retries; Flink has no generic HTTP source. So API data reaches Flink in two steps ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)):
+
+```
+Airflow fetch (ingestion.rest_api)          Redpanda                       Flink (runner)
+API pages -> one message per record  ->  ingest.<job>, partition 0  ->  table `landing`, offsets [start, end)
+          returns {topic, start_offset, end_offset, records}            -> the job's Flink SQL -> Parquet/Delta
+```
+
+- Everything API-specific lives in `fetch`, so the Flink side is the same for every API. When an API breaks, `fetch` fails with its message and Flink is never started.
+- `landing` keeps each record's JSON unchanged in `payload` (plus `_offset` and `_fetched_at`). The job's query is Flink SQL over it, for example `CAST(JSON_VALUE(payload, '$.id') AS BIGINT)`, or `payload` as is, to be parsed in dbt.
+- Both `scan.startup.mode` and `scan.bounded.mode` are `specific-offsets`, so the read is bounded and ends in `FINISHED` (§5). The expected row count is `fetch`'s `records`.
+- Redpanda runs on VM 1 (non-prod: in the Compose project) with 7-day retention, so a run can be read again without calling the API. Airflow needs `confluent-kafka` (its image, `infrastructure/docker/airflow/`) and the control plane library on `PYTHONPATH`.
 
 ## 4. Run lifecycle
 
@@ -218,7 +234,7 @@ The renderer combines them into a **resolved job spec** and a **Flink submission
 
 Users write free-form read-only SQL in the source's own dialect ([ADR-0005](adr/0005-free-form-sql.md)).
 
-1. **Parse** with `sqlglot` using the template's dialect (`tsql`, `postgres`, `bigquery`).
+1. **Parse** with `sqlglot` using the template's dialect (`tsql`, `postgres`, `mysql`, `bigquery`; `flink` for API sources, read with sqlglot's ANSI dialect, and only the table `landing` and CTEs over it are allowed).
 2. **Reject** anything that is not exactly one read-only query: multiple statements, DML/DDL, `SELECT ... INTO`, procedure calls, and dialect-specific escape hatches (`OPENROWSET`, `OPENQUERY`, `dblink`, `pg_sleep`, ...).
 3. **Require** unique, named output columns.
 4. **Choose the mode:**
@@ -266,8 +282,8 @@ Details: [ADR-0007](adr/0007-flink-standalone-session-cluster.md), [ADR-0009](ad
 
 | Environment | Layout | Storage | Purpose |
 |---|---|---|---|
-| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, SQL Server test source (PostgreSQL and MySQL test sources from Phase 2) | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
-| **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, plus the data-onboarding-agent stack (agent web app, the shared PostgreSQL server, SearXNG for its web research). VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
+| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, SQL Server test source (PostgreSQL and MySQL test sources from Phase 2), Redpanda and a test API source (`api-source`, [ADR-0015](adr/0015-rest-api-source-via-redpanda.md)) | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
+| **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, Redpanda (landing for API sources; VM 2 reads it on port 19092), plus the data-onboarding-agent stack (agent web app, the shared PostgreSQL server, SearXNG for its web research). VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
 
 Prod network requirements: VM 2 reaches the JobManager RPC and blob server ports on VM 1; TaskManager ports use fixed ranges; both VMs reach the sources and ADLS Gen2.
 
@@ -287,7 +303,8 @@ infrastructure/
 | Concern | Choice |
 |---|---|
 | Engine | Apache Flink 1.20, standalone session cluster |
-| Connectors | `flink-connector-jdbc` 3.3.x (`-1.20`), Google `flink-bigquery-connector`, Flink filesystem connector + Parquet format, `flink-azure-fs-hadoop` |
+| Connectors | `flink-connector-jdbc` 3.3.x (`-1.20`), `flink-sql-connector-kafka` 3.3.0-1.20, Google `flink-bigquery-connector`, Flink filesystem connector + Parquet format, `flink-azure-fs-hadoop` |
+| Landing for API sources | Redpanda (Kafka API), written by Airflow with `confluent-kafka` ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)) |
 | Orchestration and scheduling | Apache Airflow 3 |
 | Runner | PyFlink 1.20 (Python 3.11), Table API and SQL only |
 | Control plane | Python 3.12, FastAPI, Pydantic v2, Jinja2, sqlglot, delta-rs, pyarrow |

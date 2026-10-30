@@ -7,6 +7,10 @@ every other DAG keeps loading.
 Phase 1 tasks: ``validate -> submit -> wait``. ``submit`` runs a smoke Flink job on the session
 cluster to prove the wiring; the PyFlink runner replaces it in Phase 4 (ADR-0010), and preflight, verify and
 publish (with the table Asset) arrive in Phase 5.
+
+API jobs (source templates with ``fetch: rest_api``, ADR-0015) get a ``fetch`` task before ``submit``: it pages
+through the API and lands the records on Redpanda, and ``submit`` gets the run's topic offsets. ``fetch`` uses the
+control plane library (``ingestion.rest_api``, on PYTHONPATH) and confluent-kafka from the Airflow image.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ CONNECTIONS_DIR = PROJECT_DIR / "connections"
 TEMPLATES_DIR = PROJECT_DIR / "templates"
 
 FLINK_REST_URL = os.environ.get("FLINK_REST_URL", "http://flink-jobmanager:8081")
+LANDING_BOOTSTRAP_SERVERS = os.environ.get("LANDING_BOOTSTRAP_SERVERS", "redpanda:9092")
 # Example JAR shipped with the Flink image; shared with Airflow through a volume in non-prod.
 SMOKE_JAR = Path(os.environ.get("FLINK_SMOKE_JAR", "/opt/flink-examples/streaming/WordCount.jar"))
 
@@ -43,6 +48,8 @@ DAG_PREFIX = "ingest__"
 START_DATE = pendulum.datetime(2026, 1, 1, tz=TIMEZONE)
 DEFAULT_TIMEOUT = "2h"
 FLINK_TERMINAL_STATES = {"FINISHED", "FAILED", "CANCELED"}
+# Values of a source template's `fetch`: a task that lands the data before Flink runs (ADR-0015).
+FETCHERS = {"rest_api": "API -> Redpanda topic ingest.<job>; Flink reads the run's offsets as the table `landing`"}
 
 
 # --- Loading and validation -------------------------------------------------------------------
@@ -84,6 +91,7 @@ class JobFile:
     path: Path
     job: dict[str, Any]
     connection: dict[str, Any]
+    source_template: dict[str, Any]
     sink_template: dict[str, Any]
 
     @property
@@ -97,6 +105,11 @@ class JobFile:
     @property
     def source_type(self) -> str:
         return self.connection["template"].partition("@")[0]
+
+    @property
+    def fetcher(self) -> str | None:
+        """The source template's `fetch` (API sources: "rest_api"); None means Flink reads the source itself."""
+        return self.source_template.get("fetch")
 
     @property
     def sink_uri(self) -> str:
@@ -122,9 +135,13 @@ def load_job(path: Path) -> JobFile:
     if errors:
         raise InvalidJobFile(f"connection {connection_path.name}: " + "; ".join(errors))
 
-    _load_template("sources", connection["template"])
+    source_template = _load_template("sources", connection["template"])
+    if source_template.get("fetch") not in (None, *FETCHERS):
+        raise InvalidJobFile(f'template "{connection["template"]}": unknown fetch "{source_template["fetch"]}"')
     sink_template = _load_template("sinks", job["sink"]["template"])
-    return JobFile(path=path, job=job, connection=connection, sink_template=sink_template)
+    return JobFile(
+        path=path, job=job, connection=connection, source_template=source_template, sink_template=sink_template
+    )
 
 
 def load_jobs() -> tuple[list[JobFile], dict[str, str]]:
@@ -193,6 +210,8 @@ Web UI), not this DAG.
 | Connection | `{job["connection"]}` ({jf.connection["template"]}) |
 | Destination | `{jf.sink_uri}` ({job["sink"]["template"]}), partitioned by `ingest_date` |
 | Schedule | `{job.get("schedule") or "manual only"}` ({TIMEZONE}) |
+| Tasks | {"validate → fetch → submit → wait" if jf.fetcher else "validate → submit → wait"} |
+| Fetch | {f"`{jf.fetcher}`: {FETCHERS[jf.fetcher]}" if jf.fetcher else "none: Flink reads the source directly"} |
 
 ```sql
 {job["source"]["query"].strip()}
@@ -243,7 +262,22 @@ def build_dag(jf: JobFile) -> DAG:
             return {"ingest_date": ingest_date, "parallelism": current.job.get("runtime", {}).get("parallelism", 1)}
 
         @task
+        def fetch(run: dict[str, Any]) -> dict[str, Any]:
+            """API -> Redpanda; Flink never calls the API. Returns the run's topic and offsets for submit."""
+            from ingestion.rest_api import KafkaLanding, fetch_to_landing
+            from ingestion.templates import TemplateRegistry
+
+            current = load_job(jf.path)
+            template = TemplateRegistry(TEMPLATES_DIR).source(current.connection["template"])
+            landing = KafkaLanding(LANDING_BOOTSTRAP_SERVERS)
+            result = fetch_to_landing(template, current.connection, current.job, run["ingest_date"], landing)
+            return {**run, "landing": result.as_dict()}
+
+        @task
         def submit(run: dict[str, Any]) -> str:
+            if "landing" in run:
+                # The runner (Phase 4) reads exactly this range as the table `landing` (landing_table_sql).
+                log.info("Landed: %s", run["landing"])
             # Phase 1 smoke job. Phase 4 runs the PyFlink runner instead: the flink-python JAR with
             # entryClass PythonDriver and programArgsList ["-py", <runner>/main.py, "--spec", <path>].
             jar_id = upload_jar(SMOKE_JAR)
@@ -268,7 +302,9 @@ def build_dag(jf: JobFile) -> DAG:
             log.info("Flink job %s finished", flink_job_id)
             return state
 
-        wait(submit(validate()))
+        run = validate()
+        # The source template decides: `fetch: rest_api` adds the fetch task (ADR-0015).
+        wait(submit(fetch(run) if jf.fetcher else run))
 
     return dag
 

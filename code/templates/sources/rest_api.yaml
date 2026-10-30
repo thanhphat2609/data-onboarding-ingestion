@@ -6,6 +6,9 @@ version: 1
 # table named `landing`. The job's query is Flink SQL over `landing`, so the Flink side is the same for every API.
 connector: kafka
 dialect: flink
+# The DAG factory adds a task `fetch` before `submit` because of this line (not because of `connector: kafka`: a
+# Kafka topic that another system already fills needs no fetch). Value = the fetcher, ingestion.rest_api.
+fetch: rest_api
 
 connection_params:
   base_url:                { type: string, required: true, description: "For example https://api.example.com/v1, no trailing slash" }

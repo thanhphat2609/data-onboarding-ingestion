@@ -90,7 +90,7 @@ Airflow 3 orchestrates every run ([ADR-0008](adr/0008-airflow-dag-per-job.md)):
 - Tasks: preflight → render → submit → wait → verify → publish, each calling the shared library. `wait` is deferrable and polls the Flink REST API.
 - `max_active_runs=1` per DAG; pool `conn__<connection>` limits concurrent runs per connection; a slot pool limits the total parallelism sent to Flink.
 - On-demand runs from the UI or the CLI trigger the same DAG through the Airflow REST API.
-- **API sources** (`rest_api` template) get a `fetch` task before `submit`: it pages through the API, writes one Redpanda message per record to the job's topic `ingest.<job>` and hands the run's offsets to `submit` (§3.9).
+- **API sources** (`rest_api` template, which declares `fetch: rest_api`) get a `fetch` task before `submit`: it pages through the API, writes one Redpanda message per record to the job's topic `ingest.<job>` and hands the run's offsets to `submit` (§3.9).
 - The `publish` task emits an Airflow Asset for the table root URI, so downstream DAGs (for example dbt in another repository) run when the table is published.
 - Airflow is shared: each repository owns `dags/<repo>/` and `projects/<repo>/` on the Airflow host; this repository's DAGs live in `dags/ingestion/`.
 

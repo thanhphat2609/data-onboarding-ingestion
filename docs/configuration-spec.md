@@ -41,6 +41,7 @@ Describes a source **type**. Adding a new database of an existing type does not 
 | `url` | jdbc | Jinja template for the JDBC URL |
 | `connection_params` | yes | Parameters a `Connection` must provide |
 | `read_params` | yes | Parameters an `IngestionJob` may set under `source.read` |
+| `fetch` | no | A task the DAG runs before `submit` to land the data first. Only `rest_api` (API → Redpanda, [ADR-0015](adr/0015-rest-api-source-via-redpanda.md)); omitted: Flink reads the source itself |
 | `landing` | kafka | `topic` (per job, `{{ job }}`) and `table`: the Flink `CREATE TABLE landing` with `{{ topic }}`, `{{ bootstrap_servers }}`, `{{ start_offset }}`, `{{ end_offset }}` |
 | `preflight` | jdbc, bigquery | Dialect-specific SQL templates: `preview`, `count`, `bounds`. `{{ query }}` is an AST-rewritten query, never raw user text |
 | `type_mapping` | jdbc, bigquery | Source type → Flink SQL type |
@@ -175,6 +176,7 @@ name: rest_api
 version: 1
 connector: kafka
 dialect: flink
+fetch: rest_api    # adds the task `fetch` before `submit` in the DAG
 
 connection_params:
   base_url:                { type: string, required: true }
@@ -347,7 +349,7 @@ The DAG factory turns each job into one DAG ([ADR-0008](adr/0008-airflow-dag-per
 | `connection` | Tag `connection:<connection>`, pool `conn__<connection>` |
 | connection template | Tag `source:<template>` |
 | `tags` | DAG tags, plus `ingestion` |
-| connection template with `connector: kafka` | A `fetch` task before `submit` (API → Redpanda) |
+| `fetch` in the connection's source template | A `fetch` task before `submit` (`rest_api`: API → Redpanda) |
 | `runtime.retries`, `runtime.timeout` | Whole-run retries and timeout |
 | `sink` | Outlet `Asset(<table root URI>)` on the `publish` task, for downstream DAGs |
 

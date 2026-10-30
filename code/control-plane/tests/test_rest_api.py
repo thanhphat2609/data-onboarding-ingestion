@@ -221,3 +221,13 @@ def test_sample_pipeline_files_are_valid() -> None:
     store = ConfigStore(Settings.from_env(), REGISTRY)
     assert store.invalid_files() == []
     assert "shop-api-orders-daily" in {j["name"] for j in store.list_jobs()}
+
+
+def test_only_the_api_template_declares_a_fetch_task() -> None:
+    # The DAG factory adds `fetch` before `submit` from this field, not from `connector: kafka`.
+    assert {t.name: t.body.get("fetch") for t in REGISTRY.sources()} == {
+        "mysql": None,
+        "postgresql": None,
+        "rest_api": "rest_api",
+        "sqlserver": None,
+    }

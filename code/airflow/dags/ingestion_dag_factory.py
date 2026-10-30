@@ -8,7 +8,7 @@ Phase 1 tasks: ``validate -> submit -> wait``. ``submit`` runs a smoke Flink job
 cluster to prove the wiring; the PyFlink runner replaces it in Phase 4 (ADR-0010), and preflight, verify and
 publish (with the table Asset) arrive in Phase 5.
 
-API jobs (source templates with ``connector: kafka``, ADR-0015) get a ``fetch`` task before ``submit``: it pages
+API jobs (source templates with ``fetch: rest_api``, ADR-0015) get a ``fetch`` task before ``submit``: it pages
 through the API and lands the records on Redpanda, and ``submit`` gets the run's topic offsets. ``fetch`` uses the
 control plane library (``ingestion.rest_api``, on PYTHONPATH) and confluent-kafka from the Airflow image.
 """
@@ -48,6 +48,8 @@ DAG_PREFIX = "ingest__"
 START_DATE = pendulum.datetime(2026, 1, 1, tz=TIMEZONE)
 DEFAULT_TIMEOUT = "2h"
 FLINK_TERMINAL_STATES = {"FINISHED", "FAILED", "CANCELED"}
+# Values of a source template's `fetch`: a task that lands the data before Flink runs (ADR-0015).
+FETCHERS = {"rest_api": "API -> Redpanda topic ingest.<job>; Flink reads the run's offsets as the table `landing`"}
 
 
 # --- Loading and validation -------------------------------------------------------------------
@@ -105,9 +107,9 @@ class JobFile:
         return self.connection["template"].partition("@")[0]
 
     @property
-    def lands_first(self) -> bool:
-        """API sources: Flink reads what the fetch task landed on Redpanda (ADR-0015)."""
-        return self.source_template.get("connector") == "kafka"
+    def fetcher(self) -> str | None:
+        """The source template's `fetch` (API sources: "rest_api"); None means Flink reads the source itself."""
+        return self.source_template.get("fetch")
 
     @property
     def sink_uri(self) -> str:
@@ -134,6 +136,8 @@ def load_job(path: Path) -> JobFile:
         raise InvalidJobFile(f"connection {connection_path.name}: " + "; ".join(errors))
 
     source_template = _load_template("sources", connection["template"])
+    if source_template.get("fetch") not in (None, *FETCHERS):
+        raise InvalidJobFile(f'template "{connection["template"]}": unknown fetch "{source_template["fetch"]}"')
     sink_template = _load_template("sinks", job["sink"]["template"])
     return JobFile(
         path=path, job=job, connection=connection, source_template=source_template, sink_template=sink_template
@@ -206,6 +210,8 @@ Web UI), not this DAG.
 | Connection | `{job["connection"]}` ({jf.connection["template"]}) |
 | Destination | `{jf.sink_uri}` ({job["sink"]["template"]}), partitioned by `ingest_date` |
 | Schedule | `{job.get("schedule") or "manual only"}` ({TIMEZONE}) |
+| Tasks | {"validate → fetch → submit → wait" if jf.fetcher else "validate → submit → wait"} |
+| Fetch | {f"`{jf.fetcher}`: {FETCHERS[jf.fetcher]}" if jf.fetcher else "none: Flink reads the source directly"} |
 
 ```sql
 {job["source"]["query"].strip()}
@@ -297,7 +303,8 @@ def build_dag(jf: JobFile) -> DAG:
             return state
 
         run = validate()
-        wait(submit(fetch(run) if jf.lands_first else run))
+        # The source template decides: `fetch: rest_api` adds the fetch task (ADR-0015).
+        wait(submit(fetch(run) if jf.fetcher else run))
 
     return dag
 

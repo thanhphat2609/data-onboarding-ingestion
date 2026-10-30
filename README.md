@@ -1,6 +1,6 @@
 # data-onboarding-ingestion
 
-Self-service ingestion platform built on Apache Flink. The DE team onboards a source once from a YAML template (SQL Server, PostgreSQL, MySQL, BigQuery; a REST API source is planned). Users then define a job in the Web UI (or as YAML) with a free-form read-only `SELECT`; each job becomes its own Airflow DAG, and every run is compiled into a bounded Flink batch job. The job lands Parquet or Delta on ADLS Gen2, partitioned by `ingest_date`, and every run is verified by row-count reconciliation before it is published.
+Self-service ingestion platform built on Apache Flink. The DE team onboards a source once from a YAML template (SQL Server, PostgreSQL, MySQL, BigQuery, REST APIs). Users then define a job in the Web UI (or as YAML) with a free-form read-only `SELECT`; each job becomes its own Airflow DAG, and every run is compiled into a bounded Flink batch job. The job lands Parquet or Delta on ADLS Gen2, partitioned by `ingest_date`, and every run is verified by row-count reconciliation before it is published.
 
 ![Architecture](docs/assets/architecture.svg)
 
@@ -47,7 +47,7 @@ Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod 
 
 ## Scope (v1)
 
-- Sources: SQL Server, PostgreSQL, MySQL, BigQuery; REST API planned
+- Sources: SQL Server, PostgreSQL, MySQL, BigQuery; REST APIs through a Redpanda landing topic ([ADR-0015](docs/adr/0015-rest-api-source-via-redpanda.md))
 - Destination: Azure Data Lake Storage Gen2
 - Formats: Parquet, Delta Lake
 - Execution: Apache Flink 1.20 in batch mode on a standalone session cluster (JobManager on VM 1, TaskManagers on VM 2)

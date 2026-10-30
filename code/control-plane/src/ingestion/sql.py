@@ -31,6 +31,10 @@ _FORBIDDEN_NODES: dict[type[exp.Expression], str] = {
 }
 # Functions that reach outside the connected database.
 _FORBIDDEN_FUNCTIONS = {"OPENROWSET", "OPENQUERY", "OPENDATASOURCE", "OPENXML"}
+# Template dialects sqlglot has no name for. Flink SQL is close to ANSI (Calcite), which is sqlglot's default dialect.
+_SQLGLOT_DIALECTS = {"flink": ""}
+# API jobs (rest_api template, ADR-0015) read only the table that the run's fetch task filled.
+LANDING_TABLE = "landing"
 
 
 @dataclass
@@ -57,8 +61,12 @@ class SqlCheck:
         self.issues.append(SqlIssue("warning", message))
 
 
+def _sqlglot(dialect: str) -> str:
+    return _SQLGLOT_DIALECTS.get(dialect, dialect)
+
+
 def _parse(query: str, dialect: str) -> list[exp.Expr]:
-    return [statement for statement in sqlglot.parse(query, read=dialect) if statement is not None]
+    return [statement for statement in sqlglot.parse(query, read=_sqlglot(dialect)) if statement is not None]
 
 
 def check_sql(query: str, dialect: str) -> SqlCheck:
@@ -109,8 +117,13 @@ def check_sql(query: str, dialect: str) -> SqlCheck:
             result.error(f"Duplicate column names: {', '.join(duplicates)}; add aliases")
     result.columns = [name for name in columns if name and name != "*"]
 
-    tables = [table.sql(dialect=dialect) for table in statement.find_all(exp.Table)]
+    tables = [table.sql(dialect=_sqlglot(dialect)) for table in statement.find_all(exp.Table)]
     result.tables = tables
+    if dialect == "flink":
+        ctes = {cte.alias.lower() for cte in statement.find_all(exp.CTE)}
+        others = sorted({t for t in tables if t.lower() not in {LANDING_TABLE, *ctes}})
+        if others:
+            result.error(f"Read only from the table {LANDING_TABLE}, not {', '.join(others)}: the API data lands there")
     complex_query = any(
         statement.find(node_type) is not None
         for node_type in (exp.Join, exp.Group, exp.SetOperation, exp.With, exp.Distinct, exp.Having, exp.Window)
@@ -131,5 +144,5 @@ def split_for_wrapping(query: str, dialect: str) -> tuple[str, str]:
     statement.set("with_", None)
     if statement.args.get("order") and not statement.args.get("limit"):
         statement.set("order", None)
-    prefix = with_clause.sql(dialect=dialect) if with_clause is not None else ""
-    return prefix, statement.sql(dialect=dialect)
+    prefix = with_clause.sql(dialect=_sqlglot(dialect)) if with_clause is not None else ""
+    return prefix, statement.sql(dialect=_sqlglot(dialect))

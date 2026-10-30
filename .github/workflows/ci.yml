@@ -30,14 +30,21 @@ jobs:
         run: pip install "./code/control-plane[dev]"
       - name: Ruff
         run: |
-          ruff check --no-cache code/control-plane/src code/spikes
-          ruff format --no-cache --check code/control-plane/src code/spikes
+          ruff check --no-cache code/control-plane/src code/control-plane/tests code/spikes
+          ruff format --no-cache --check code/control-plane/src code/control-plane/tests code/spikes
       - name: Mypy
         working-directory: code/control-plane
         run: mypy --no-incremental src
+      - name: Pytest (offline: fake API, in-memory landing)
+        working-directory: code/control-plane
+        run: pytest -q
       - name: Airflow files compile
         run: python -m py_compile code/airflow/dags/*.py code/airflow/scripts/*.py
       - name: Validate pipelines/ (connections and jobs)
+        # The paths are needed: the installed package can't find the checkout by itself.
+        env:
+          INGESTION_PIPELINES_DIR: pipelines
+          INGESTION_TEMPLATES_DIR: code/templates
         run: python -m ingestion.validate
 
   ui:

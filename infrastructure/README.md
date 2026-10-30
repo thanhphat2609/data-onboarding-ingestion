@@ -10,7 +10,7 @@ non-prod/        One Compose project with every service, for GitHub Codespaces
 prod/            Two VMs, deployed by GitHub Actions (draft until the VMs exist, see prod/README.md)
 ```
 
-Airflow uses the upstream image; Flink uses `docker/flink/` from Phase 2.
+Airflow uses `docker/airflow/` (the upstream image plus `confluent-kafka` for API jobs, [ADR-0015](../docs/adr/0015-rest-api-source-via-redpanda.md)); Flink uses `docker/flink/` from Phase 2.
 
 ## Non-prod
 
@@ -18,11 +18,13 @@ Airflow uses the upstream image; Flink uses `docker/flink/` from Phase 2.
 |---|---|---|
 | Web UI | 3000 | Calls the Ingestion API through `/api` on the same port; `API_MODE=mock` in `.env` switches back to the in-browser mock |
 | Ingestion API | 8000 | Writes `pipelines/connections/` and `pipelines/jobs/`, which Airflow reads; docs at `/api/docs`. Every `env://<VAR>` a connection uses must be listed in its `environment` |
-| Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod |
+| Airflow | 8080 | Airflow 3 in standalone mode (one container); no login in non-prod. Runs the `fetch` task of API jobs, so the tokens of API connections (`env://`) are in its `environment` |
 | Flink web UI | 8081 | Session cluster: one JobManager, one TaskManager with 4 slots |
 | SQL Server | 1433 | Sample database `crm`, read-only login `svc_ingest_ro` |
 | PostgreSQL source | internal | Phase 2 test source: database `sales`, read-only role `svc_ingest_ro` (`env://SALES_POSTGRES_RO_PASSWORD`) |
 | MySQL source | internal | Phase 2 test source: database `shop`, read-only user `svc_ingest_ro` (`env://SHOP_MYSQL_RO_PASSWORD`) |
+| Redpanda | internal | Landing for API sources: Kafka API `redpanda:9092`, one topic `ingest.<job>` per API job, 7-day retention. `docker compose -f infrastructure/non-prod/docker-compose.yml exec redpanda rpk topic consume ingest.shop-api-orders-daily -n 3` |
+| API source | internal | Test REST API `http://api-source:8000/v1/orders` (paged JSON, bearer `env://SHOP_API_TOKEN`, a 429 on every 7th request); connection `shop-api-nonprod` |
 
 The three test sources share one model: `segments`, `customers` (10,000 rows) and `orders`, empty until `bash infrastructure/non-prod/seed-large.sh` fills it with 10M rows. After pulling new services, run `bootstrap.sh` again: it adds new variables from `.env.example` to an existing `.env`.
 | PostgreSQL | internal | Databases `airflow` and `platform`. The shared server or a local container, see below |

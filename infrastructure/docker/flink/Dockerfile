@@ -1,4 +1,4 @@
-# Flink image (ADR-0007): JDBC connector and drivers, Parquet, and the ADLS Gen2 filesystem plugin.
+# Flink image (ADR-0007): JDBC connector and drivers, Kafka connector, Parquet, and the ADLS Gen2 filesystem plugin.
 # Target `taskmanager` is the base; target `jobmanager` adds Python 3.11 and PyFlink for the runner (ADR-0010),
 # because only the JobManager runs Python. Versions are the Phase 2 candidates; the spikes confirm or replace them.
 
@@ -11,6 +11,9 @@ ADD --chmod=644 ${MAVEN}/org/apache/flink/flink-connector-jdbc/3.4.0-1.20/flink-
 ADD --chmod=644 ${MAVEN}/com/microsoft/sqlserver/mssql-jdbc/13.6.1.jre11/mssql-jdbc-13.6.1.jre11.jar /opt/flink/lib/
 ADD --chmod=644 ${MAVEN}/org/postgresql/postgresql/42.7.14/postgresql-42.7.14.jar /opt/flink/lib/
 ADD --chmod=644 ${MAVEN}/com/mysql/mysql-connector-j/9.7.0/mysql-connector-j-9.7.0.jar /opt/flink/lib/
+
+# Kafka SQL connector (shaded, with its client): reads the landing topics of API sources on Redpanda (ADR-0015).
+ADD --chmod=644 ${MAVEN}/org/apache/flink/flink-sql-connector-kafka/3.3.0-1.20/flink-sql-connector-kafka-3.3.0-1.20.jar /opt/flink/lib/
 
 # Parquet format for the filesystem connector; it needs Hadoop classes, from the shaded Hadoop client.
 ADD --chmod=644 ${MAVEN}/org/apache/flink/flink-sql-parquet/1.20.5/flink-sql-parquet-1.20.5.jar /opt/flink/lib/

@@ -33,7 +33,7 @@ Each spike records what was run, the outcome (works / works with changes / fails
 | 9 | BigQuery source from PyFlink SQL DDL (table read, materialized query) | | Blocked: BigQuery project and service account |
 | 10 | Delta commit of Flink-written Parquet with delta-rs; replace one `ingest_date` | | Feeds [ADR-0004](../adr/0004-lake-layout-and-delta-commit.md) |
 | 11 | Parquet timestamps readable by pandas, Spark and Delta readers | | `check_parquet.py` covers pyarrow/pandas |
-| 12 | REST API source: approach compared, ADR written | | After 1–11 |
+| 12 | REST API source: approach compared, ADR written | ✅ ADR written; 🟡 PyFlink run pending | [ADR-0015](../adr/0015-rest-api-source-via-redpanda.md). 2026-10-30, outside the Codespace: `airflow dags test` on Airflow 3.3.2 (`validate → fetch → submit → wait`, a 429 retried); `fetch` → Redpanda v25.3.18 (two runs: offsets [0, 100) and [100, 200)); Flink 1.20.3 SQL client with `flink-sql-connector-kafka` 3.3.0-1.20 read [100, 200) with `scan.bounded.mode: specific-offsets` → Parquet, `FINISHED` in 3.4 s, 100 rows, only that run's records. Redpanda's HTTP proxy can't create topics (and answers 200 with `error_code: 3` for a missing one), so `fetch` uses confluent-kafka. To do in the Codespace: `kafka_to_parquet.py` from PyFlink |
 
 ## Throughput (10M rows of `orders`, 4 slots)
 
@@ -46,4 +46,6 @@ Each spike records what was run, the outcome (works / works with changes / fails
 
 ## Decisions
 
-_Filled at the end of the phase: pinned versions (copied to architecture §11), Delta strategy, BigQuery connector, REST API source approach._
+- **REST API source** (2026-10-30): Airflow `fetch` lands records on Redpanda; Flink reads the run's offset range as the bounded table `landing` ([ADR-0015](../adr/0015-rest-api-source-via-redpanda.md)). Pinned: Redpanda v25.3.18, `flink-sql-connector-kafka` 3.3.0-1.20, `confluent-kafka` 2.16.0.
+
+_Filled at the end of the phase: pinned versions (copied to architecture §11), Delta strategy, BigQuery connector._

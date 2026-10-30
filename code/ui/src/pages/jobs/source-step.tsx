@@ -37,7 +37,9 @@ export function SourceStep(props: SourceStepProps) {
         <CardHeader>
           <CardTitle>Query</CardTitle>
           <CardDescription>
-            One read-only SELECT in the source's own dialect. Joins and CTEs are allowed.
+            {template?.connector === 'kafka'
+              ? "Flink SQL over the table landing: one row per API record, its JSON in the column payload (ADR-0015)."
+              : "One read-only SELECT in the source's own dialect. Joins and CTEs are allowed."}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">

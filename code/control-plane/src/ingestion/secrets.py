@@ -14,7 +14,7 @@ def resolve(ref: str) -> str:
     if scheme == "env":
         value = os.environ.get(path)
         if value is None:
-            raise SecretError(f"environment variable {path} is not set in the Ingestion API container")
+            raise SecretError(f"environment variable {path} is not set in this container")
         return value
     if scheme == "kv":
         raise SecretError("kv:// references are resolved in prod only (Phase 6)")

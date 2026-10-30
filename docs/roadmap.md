@@ -40,6 +40,7 @@ Tags follow [CONTRIBUTING.md](../CONTRIBUTING.md#versioning-and-releases): `v0.<
 | `v0.1.0-rc.2` | 2026-10-25 | Shared metadata DB with the agent stack ([ADR-0011](adr/0011-shared-postgresql-server.md)) |
 | `v0.1.0-rc.3` | 2026-10-25 | Ingestion API (`code/control-plane/`); the Web UI container uses it instead of the mock |
 | `v0.1.0` | 2026-10-25 | Phase 1 closed: non-prod stack runs in Codespaces (Compose fix for the `flink-examples` volume) |
+| `v0.2.0-rc.1` | 2026-10-30 | Phase 2 groundwork: Flink image, PostgreSQL and MySQL sources and spikes, REST API source through a Redpanda landing topic ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)), CI checks and Deploy workflow ([ADR-0012](adr/0012-cicd-ssh-deploy.md), [ADR-0013](adr/0013-prod-settings-in-github.md), [ADR-0014](adr/0014-prod-save-flow.md)) |
 
 
 ```mermaid

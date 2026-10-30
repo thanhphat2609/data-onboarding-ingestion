@@ -1,0 +1,31 @@
+# Example source: REST API (ADR-0015), paged JSON orders behind a bearer token, a 429 on every 7th request (server.py) (non-prod only; it plays one of the company's systems). Demo: ../README.md.
+# Start alone:   docker compose -f infrastructure/non-prod/example-sources/rest-api/docker-compose.yml up -d
+# Start all:     docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml up -d
+# Secrets: .env next to this file (from .env.example, created by ../../bootstrap.sh). The read-only login is handed to
+# the platform through ../../sources.env, like a GitHub secret in prod (ADR-0013).
+
+# Same project name in every source file, so a source started alone and "start all" are the same containers.
+name: ingestion-example-sources
+
+services:
+  api-source:
+    image: python:3.12.15-slim-bookworm
+    command: ["python", "/app/server.py"]
+    environment:
+      API_TOKEN: ${SHOP_API_TOKEN:?run bootstrap.sh to create .env}
+    volumes:
+      - ./server.py:/app/server.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health', timeout=4)"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    mem_limit: 64m
+    restart: unless-stopped
+
+networks:
+  # Shared with the platform stack (api, airflow, flink), which reaches the source by its service name; created by
+  # ../../bootstrap.sh.
+  default:
+    name: ingestion-sources
+    external: true

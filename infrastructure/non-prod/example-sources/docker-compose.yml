@@ -1,0 +1,11 @@
+# Every example source at once (non-prod only). Each source has its own Compose file and .env in its folder, and can
+# be started alone; this file only includes them. Demo, step by step: README.md.
+# Start all: docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml up -d
+
+name: ingestion-example-sources
+
+include:
+  - sqlserver/docker-compose.yml
+  - postgresql/docker-compose.yml
+  - mysql/docker-compose.yml
+  - rest-api/docker-compose.yml

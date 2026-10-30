@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares non-prod: .env files with random secrets (the platform's, and the sample databases'), sources.env (the
+# Prepares non-prod: .env files with random secrets (the platform's, and each example source's), sources.env (the
 # source secrets the platform reads, like prod's GitHub secrets), the shared run directory and the Docker networks.
 # Safe to run again; existing values are kept.
 set -euo pipefail
@@ -37,15 +37,17 @@ prepare_env() {
 }
 
 prepare_env .env
-prepare_env sample_database/.env
+for example in example-sources/*/.env.example; do
+  prepare_env "${example%.example}"
+done
 
-# sources.env: every key of sources.env.example that is still empty gets its value from sample_database/.env (in
-# prod: a GitHub secret per key, written by the Deploy workflow). Values you set yourself are kept.
+# sources.env: every key of sources.env.example that is still empty gets its value from the example sources' .env
+# files (in prod: a GitHub secret per key, written by the Deploy workflow). Values you set yourself are kept.
 touch sources.env
 chmod 600 sources.env
 while IFS= read -r key; do
   if ! grep -qE "^${key}=.+" sources.env; then
-    value=$(grep -m1 -E "^${key}=" sample_database/.env | cut -d= -f2- || true)
+    value=$(cat example-sources/*/.env | grep -m1 -E "^${key}=" | cut -d= -f2- || true)
     sed -i "/^${key}=/d" sources.env
     printf '%s=%s\n' "$key" "$value" >> sources.env
     if [[ -n "$value" ]]; then echo "Set ${key} in sources.env"; fi
@@ -65,7 +67,7 @@ if ! docker network inspect data-platform >/dev/null 2>&1; then
   docker network create data-platform >/dev/null
   echo "Created Docker network data-platform"
 fi
-# The platform and the sample databases (sample_database/) meet on this network.
+# The platform and the example sources (example-sources/) meet on this network.
 if ! docker network inspect ingestion-sources >/dev/null 2>&1; then
   docker network create ingestion-sources >/dev/null
   echo "Created Docker network ingestion-sources"

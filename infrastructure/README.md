@@ -7,7 +7,7 @@ docker/ui/       Web UI image (static build served by nginx, proxies /api)
 docker/api/      Ingestion API image (code/control-plane)
 docker/flink/    Flink image: JDBC connector and drivers, Parquet, ADLS plugin; target jobmanager adds PyFlink
 non-prod/        One Compose project with the platform's services, for GitHub Codespaces
-non-prod/sample_database/  Test sources (SQL Server, PostgreSQL, MySQL, a REST API), started by hand for demos
+non-prod/example-sources/  Test sources (SQL Server, PostgreSQL, MySQL, a REST API), started by hand for demos
 prod/            Two VMs, deployed by GitHub Actions (draft until the VMs exist, see prod/README.md)
 ```
 
@@ -28,14 +28,15 @@ After pulling new services, run `bootstrap.sh` again: it adds new variables from
 
 ### Source secrets: `sources.env`
 
-Connections reference passwords and tokens as `env://<VAR>`. The values are in `infrastructure/non-prod/sources.env`, read by the API (Test connection, preview), Airflow (the `fetch` task) and Flink. It is the non-prod twin of prod's `vm1/sources.env`, which the Deploy workflow writes from GitHub secrets ([ADR-0013](../docs/adr/0013-prod-settings-in-github.md)). `bootstrap.sh` fills the keys of `sources.env.example` from `sample_database/.env`. For another source, add its line to `sources.env`, then `docker compose -f infrastructure/non-prod/docker-compose.yml up -d` to recreate the containers that read it.
+Connections reference passwords and tokens as `env://<VAR>`. The values are in `infrastructure/non-prod/sources.env`, read by the API (Test connection, preview), Airflow (the `fetch` task) and Flink. It is the non-prod twin of prod's `vm1/sources.env`, which the Deploy workflow writes from GitHub secrets ([ADR-0013](../docs/adr/0013-prod-settings-in-github.md)). `bootstrap.sh` fills the keys of `sources.env.example` from `example-sources/.env`. For another source, add its line to `sources.env`, then `docker compose -f infrastructure/non-prod/docker-compose.yml up -d` to recreate the containers that read it.
 
-### Test sources: `sample_database/`
+### Test sources: `example-sources/`
 
-SQL Server, PostgreSQL, MySQL and a REST API, each with a read-only login, in their own Compose project. Like the company's real systems, they are not part of the platform: start them by hand, then onboard them in the Web UI. `pipelines/` starts empty. Demo, step by step, and the example connection and job files: [non-prod/sample_database/README.md](non-prod/sample_database/README.md).
+SQL Server, PostgreSQL, MySQL and a REST API, each with a read-only login, in its own folder with its own Compose file and `.env`. Like the company's real systems, they are not part of the platform: start them by hand, then onboard them in the Web UI. `pipelines/` starts empty. Demo, step by step, and the example connection and job files: [non-prod/example-sources/README.md](non-prod/example-sources/README.md).
 
 ```bash
-docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml up -d
+docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml up -d              # all of them
+docker compose -f infrastructure/non-prod/example-sources/postgresql/docker-compose.yml up -d   # or one
 ```
 
 They reach the platform over the Docker network `ingestion-sources`, created by `bootstrap.sh`.
@@ -76,7 +77,7 @@ docker compose up -d --build ui         # rebuild the UI after changes
 
 ### Try a job
 
-`pipelines/` starts empty. Start the sample databases and create a connection and a job in the Web UI, step by step: [non-prod/sample_database/README.md](non-prod/sample_database/README.md). The job appears in Airflow as DAG `ingest__<name>` (new DAGs start paused); in Phase 1 a run executes Flink's WordCount example on the session cluster, visible in the Flink web UI.
+`pipelines/` starts empty. Start the example sources and create a connection and a job in the Web UI, step by step: [non-prod/example-sources/README.md](non-prod/example-sources/README.md). The job appears in Airflow as DAG `ingest__<name>` (new DAGs start paused); in Phase 1 a run executes Flink's WordCount example on the session cluster, visible in the Flink web UI.
 
 After adding or changing a connection file by hand (the Web UI does this for you), refresh its pool (or restart Airflow):
 
@@ -90,11 +91,11 @@ To work on the UI with hot reload, run `npm ci && npm run dev -- --port 5173` in
 
 ```bash
 docker compose -f infrastructure/non-prod/docker-compose.yml down -v                    # deletes all data volumes
-docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml down -v    # and the sample databases
+docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml down -v    # and the example sources
 rm -rf infrastructure/non-prod/data
 ```
 
-On one host the two stacks don't clash: the agent stack publishes only `127.0.0.1:7860` (app) and `127.0.0.1:5432` (PostgreSQL); its SearXNG container has no host port. This stack uses 3000, 8000, 8080 and 8081 (and 1433 while the sample databases run). Never combine `local-db` with the agent stack on one host: Airflow would see two `postgres` containers.
+On one host the two stacks don't clash: the agent stack publishes only `127.0.0.1:7860` (app) and `127.0.0.1:5432` (PostgreSQL); its SearXNG container has no host port. This stack uses 3000, 8000, 8080 and 8081 (and 1433 while the example sources run). Never combine `local-db` with the agent stack on one host: Airflow would see two `postgres` containers.
 
 `.env` is kept; delete it as well to get new secrets. In shared mode `down -v` doesn't touch the metadata DB, which lives in the agent stack's volume. Reset it there, or drop and recreate the `airflow` database.
 

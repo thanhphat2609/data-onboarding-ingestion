@@ -1,4 +1,4 @@
-# Sample databases (non-prod only)
+# Example sources (non-prod only)
 
 Test sources for demos and spikes: SQL Server, PostgreSQL, MySQL and a REST API, each with a read-only login. They play the company's real systems, so they live outside the platform:
 
@@ -6,14 +6,18 @@ Test sources for demos and spikes: SQL Server, PostgreSQL, MySQL and a REST API,
 - `pipelines/` starts empty: no connection points at them until you create one in the Web UI, step by step, as you would in prod.
 - Prod never has them. There, connections point at the real systems.
 
-| Service (host name) | Template | Database / endpoint | Read-only login | Secret (`env://`) |
-|---|---|---|---|---|
-| `sqlserver` (port 1433 on the host) | `sqlserver@1` | `crm` | `svc_ingest_ro` | `CRM_SQLSERVER_RO_PASSWORD` |
-| `postgres-source` | `postgresql@1` | `sales` | `svc_ingest_ro` | `SALES_POSTGRES_RO_PASSWORD` |
-| `mysql-source` | `mysql@1` | `shop` | `svc_ingest_ro` | `SHOP_MYSQL_RO_PASSWORD` |
-| `api-source` | `rest_api@1` | `http://api-source:8000/v1/orders` (paged JSON, a 429 on every 7th request) | bearer token | `SHOP_API_TOKEN` |
+Each source is a folder with its own `docker-compose.yml`, `.env` (from `.env.example`, filled by `../bootstrap.sh`) and seed. The `docker-compose.yml` here only includes the four, to start them all at once.
 
-The three databases share one model: `segments`, `customers` (10,000 rows) and `orders` (empty until `bash infrastructure/non-prod/sample_database/seed-large.sh` fills it with 10M rows).
+| Folder | Host name | Template | Database / endpoint | Read-only login | Secret (`env://`) |
+|---|---|---|---|---|---|
+| [sqlserver/](sqlserver/) | `sqlserver` (port 1433 on the host) | `sqlserver@1` | `crm` | `svc_ingest_ro` | `CRM_SQLSERVER_RO_PASSWORD` |
+| [postgresql/](postgresql/) | `postgres-source` | `postgresql@1` | `sales` | `svc_ingest_ro` | `SALES_POSTGRES_RO_PASSWORD` |
+| [mysql/](mysql/) | `mysql-source` | `mysql@1` | `shop` | `svc_ingest_ro` | `SHOP_MYSQL_RO_PASSWORD` |
+| [rest-api/](rest-api/) | `api-source` | `rest_api@1` | `http://api-source:8000/v1/orders` (paged JSON, a 429 on every 7th request) | bearer token | `SHOP_API_TOKEN` |
+
+SQL Server needs about 2 GB of memory; start only the sources you demo.
+
+The three databases share one model: `segments`, `customers` (10,000 rows) and `orders` (empty until `bash infrastructure/non-prod/example-sources/seed-large.sh` fills it with 10M rows).
 
 The platform and these sources meet on the Docker network `ingestion-sources`, which `../bootstrap.sh` creates.
 
@@ -37,19 +41,25 @@ Show that `pipelines/connections/` and `pipelines/jobs/` are empty, and that Air
 
 ### 1. The source exists
 
-Start the sample databases. They play "the CRM", "the sales database", and so on.
+Start the source you demo. It plays "the CRM", "the sales database", and so on:
 
 ```bash
-docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml up -d
+docker compose -f infrastructure/non-prod/example-sources/postgresql/docker-compose.yml up -d
 ```
 
-Wait until every service is `healthy` (`docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml ps`). SQL Server takes about a minute, then `sqlserver-seed` runs once and exits.
+Or all four at once:
+
+```bash
+docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml up -d
+```
+
+Wait until it is `healthy` (`docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml ps` lists every source, however it was started). SQL Server takes about a minute, then `sqlserver-seed` runs once and exits.
 
 *Prod:* the system already exists. The DE team gets a read-only login from its owner.
 
 ### 2. The secret
 
-The connection refers to the password as `env://NAME`; the value lives in `infrastructure/non-prod/sources.env`, which `bootstrap.sh` filled from this folder's `.env`. Show the key names in it (not the values).
+The connection refers to the password as `env://NAME`; the value lives in `infrastructure/non-prod/sources.env`, which `bootstrap.sh` filled from the source's `.env` (e.g. `postgresql/.env`). Show the key names in it (not the values).
 
 *Prod:* the Data Team adds the GitHub secret `NAME` and runs **Actions → Deploy**, which writes `sources.env` on VM 1 ([ADR-0013](../../../docs/adr/0013-prod-settings-in-github.md)). For a source that isn't in the file yet, here: add the line to `sources.env`, then run `docker compose -f infrastructure/non-prod/docker-compose.yml up -d` to recreate the containers that read it.
 
@@ -99,8 +109,8 @@ Until the runner exists (roadmap Phase 4), `submit` runs Flink's WordCount smoke
 
 ### Reset
 
-Delete the files you created in `pipelines/connections/` and `pipelines/jobs/`; the DAGs disappear on the next parse. Stop the sample databases and drop their data:
+Delete the files you created in `pipelines/connections/` and `pipelines/jobs/`; the DAGs disappear on the next parse. Stop the example sources and drop their data:
 
 ```bash
-docker compose -f infrastructure/non-prod/sample_database/docker-compose.yml down -v
+docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml down -v
 ```

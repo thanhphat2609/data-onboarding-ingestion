@@ -25,7 +25,7 @@ pipelines/                YAML owned by users and the DE team, one file per obje
   jobs/                   ingestion jobs; jobs/<name>.yaml becomes DAG ingest__<name>
 infrastructure/           Dockerfiles and Docker Compose per environment
   docker/  non-prod/  prod/
-  non-prod/sample_database/  test sources for demos (SQL Server, PostgreSQL, MySQL, REST API); non-prod only
+  non-prod/example-sources/  test sources for demos (SQL Server, PostgreSQL, MySQL, REST API); non-prod only
 docs/                     architecture, roadmap, configuration spec, ADRs
 ```
 
@@ -35,7 +35,7 @@ Details and reasons: [architecture §12](docs/architecture.md#12-repository-layo
 
 Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod stack starts by itself: Web UI on port 3000, Airflow on 8080, Flink on 8081. See [infrastructure/README.md](infrastructure/README.md) to run it elsewhere.
 
-`pipelines/` starts empty, as in a new prod. To demo the platform, start the sample databases and onboard one step by step (connection → job → DAG → run): [infrastructure/non-prod/sample_database/README.md](infrastructure/non-prod/sample_database/README.md).
+`pipelines/` starts empty, as in a new prod. To demo the platform, start the example sources and onboard one step by step (connection → job → DAG → run): [infrastructure/non-prod/example-sources/README.md](infrastructure/non-prod/example-sources/README.md).
 
 ## Documentation
 

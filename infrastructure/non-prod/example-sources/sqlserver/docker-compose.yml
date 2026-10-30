@@ -1,0 +1,62 @@
+# Example source: SQL Server, database crm, read-only login svc_ingest_ro (non-prod only; it plays one of the company's systems). Demo: ../README.md.
+# Start alone:   docker compose -f infrastructure/non-prod/example-sources/sqlserver/docker-compose.yml up -d
+# Start all:     docker compose -f infrastructure/non-prod/example-sources/docker-compose.yml up -d
+# Secrets: .env next to this file (from .env.example, created by ../../bootstrap.sh). The read-only login is handed to
+# the platform through ../../sources.env, like a GitHub secret in prod (ADR-0013).
+
+# Same project name in every source file, so a source started alone and "start all" are the same containers.
+name: ingestion-example-sources
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?run bootstrap.sh to create .env}
+      MSSQL_MEMORY_LIMIT_MB: "1536"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 15s
+      retries: 10
+      start_period: 30s
+    mem_limit: 2g
+    restart: unless-stopped
+
+  # Runs once: creates the crm database, its tables and the read-only login, then exits.
+  sqlserver-seed:
+    image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd"]
+    command:
+      - -C
+      - -S
+      - sqlserver
+      - -U
+      - sa
+      - -P
+      - ${MSSQL_SA_PASSWORD}
+      - -b
+      - -i
+      - /seed/seed.sql
+      - -v
+      - RO_PASSWORD=${CRM_SQLSERVER_RO_PASSWORD:?run bootstrap.sh to create .env}
+    volumes:
+      - ./seed.sql:/seed/seed.sql:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    restart: "no"
+
+networks:
+  # Shared with the platform stack (api, airflow, flink), which reaches the source by its service name; created by
+  # ../../bootstrap.sh.
+  default:
+    name: ingestion-sources
+    external: true
+
+volumes:
+  sqlserver-data:

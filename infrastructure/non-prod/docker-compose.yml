@@ -4,7 +4,7 @@
 # connections reference as env://<VAR> come from sources.env, like prod's (ADR-0013).
 #
 # The test sources (SQL Server, PostgreSQL, MySQL, a REST API) are a separate project, started by hand for a demo:
-# sample_database/ (README.md there). Like the company's real systems, they are not part of the platform.
+# example-sources/ (README.md there). Like the company's real systems, they are not part of the platform.
 #
 # Metadata DB (ADR-0011): Airflow uses the platform's shared PostgreSQL server, hosted by the
 # data-onboarding-agent stack, over the Docker network `data-platform` (both stacks on one host, as on VM 1).
@@ -229,7 +229,7 @@ networks:
   platform:
     name: data-platform
     external: true
-  # Shared with sample_database/ (the test sources), so connections reach them by name; created by bootstrap.sh.
+  # Shared with example-sources/ (the test sources), so connections reach them by name; created by bootstrap.sh.
   sources:
     name: ingestion-sources
     external: true

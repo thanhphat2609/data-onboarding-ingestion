@@ -47,8 +47,8 @@ jobs:
           INGESTION_TEMPLATES_DIR: code/templates
         run: |
           python -m ingestion.validate
-          # The demo's example files (infrastructure/non-prod/sample_database/examples/) stay valid too.
-          INGESTION_PIPELINES_DIR=infrastructure/non-prod/sample_database/examples python -m ingestion.validate
+          # The demo's example files (infrastructure/non-prod/example-sources/examples/) stay valid too.
+          INGESTION_PIPELINES_DIR=infrastructure/non-prod/example-sources/examples python -m ingestion.validate
 
   ui:
     name: Web UI (types, lint, build)
@@ -83,7 +83,13 @@ jobs:
         run: |
           for file in $(git ls-files '*docker-compose.yml'); do
             echo "::group::$file"
-            docker compose --env-file "$(dirname "$file")/.env" -f "$file" config --quiet
+            # A file that only includes others (example-sources/) has no .env of its own; each included file reads its own.
+            env_file="$(dirname "$file")/.env"
+            if [[ -f "$env_file" ]]; then
+              docker compose --env-file "$env_file" -f "$file" config --quiet
+            else
+              docker compose -f "$file" config --quiet
+            fi
             echo "::endgroup::"
           done
       - name: Build every image (not pushed)

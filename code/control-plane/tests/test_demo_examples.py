@@ -1,4 +1,4 @@
-"""The demo's example files (infrastructure/non-prod/sample_database/examples/): what a demo types into the Web UI."""
+"""The demo's example files (infrastructure/non-prod/example-sources/examples/): what a demo types into the Web UI."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ REGISTRY = TemplateRegistry(REPO_ROOT / "code" / "templates")
 
 
 def test_demo_examples_are_valid() -> None:
-    # The files a demo creates in the Web UI (sample_database/README.md); pipelines/ itself starts empty.
-    examples = REPO_ROOT / "infrastructure" / "non-prod" / "sample_database" / "examples"
+    # The files a demo creates in the Web UI (example-sources/README.md); pipelines/ itself starts empty.
+    examples = REPO_ROOT / "infrastructure" / "non-prod" / "example-sources" / "examples"
     store = ConfigStore(replace(Settings.from_env(), pipelines_dir=examples), REGISTRY)
     assert store.invalid_files() == []
     assert {c["template"] for c in store.list_connections()} == {"sqlserver@1", "postgresql@1", "mysql@1", "rest_api@1"}

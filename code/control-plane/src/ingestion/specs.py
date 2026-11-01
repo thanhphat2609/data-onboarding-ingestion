@@ -1,6 +1,6 @@
 """Validation of Connection and IngestionJob documents: JSON Schema, then template parameters.
 
-Same rules as the DAG factory (data-onboarding-orchestration, dags/ingestion/ingestion_dag_factory.py), plus the template parameter checks. The
+Same rules as the DAG factory in data-onboarding-orchestration, plus the template parameter checks. The
 factory moves onto this library in Phase 5.
 """
 

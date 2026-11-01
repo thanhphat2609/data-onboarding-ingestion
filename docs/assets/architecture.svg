@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 640" width="1240" height="640" role="img" aria-labelledby="t d">
-  <title id="t">Flink Ingestion Platform architecture</title>
-  <desc id="d">Users and the DE team create connections and jobs in the Web UI. The Ingestion API validates SQL, previews data and writes one YAML file per job. On VM 1, the Airflow DAG factory turns each job file into its own DAG, which runs preflight, submits the job to the Flink JobManager, waits, verifies row counts and publishes. On VM 2, Flink TaskManagers read bounded data from SQL Server, PostgreSQL and BigQuery and write Parquet to a staging area on ADLS Gen2.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 620" width="1240" height="620" role="img" aria-labelledby="t d">
+  <title id="t">data-onboarding-ingestion architecture</title>
+  <desc id="d">Users create connections and jobs in the Web UI. The Ingestion API validates them against the templates and schemas, checks SQL and previews data from the sources, and opens a pull request on data-onboarding-orchestration. Airflow there submits each run to the Flink JobManager over REST. The PyFlink runner on the JobManager and the TaskManagers read bounded data from SQL Server, PostgreSQL and MySQL, or from a Redpanda topic for API sources, and write Parquet or Delta to ADLS Gen2.</desc>
   <style>
     text { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; fill: #14232C; }
     .bg { fill: #FFFFFF; }
@@ -23,132 +23,111 @@
     .badge-a { fill: #9A5B12; }
     .bn { fill: #FFFFFF; font-family: Consolas, monospace; font-size: 11px; text-anchor: middle; }
     .el { font-family: Consolas, "JetBrains Mono", monospace; font-size: 10.5px; fill: #586A75; }
+    .title { font-size: 15px; font-weight: 700; }
   </style>
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
     <marker id="arrm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ahm"/></marker>
   </defs>
-  <rect class="bg" x="0" y="0" width="1240" height="640"/>
-
-  <!-- Users -->
-  <text class="zl" x="20" y="74">USERS</text>
-  <rect class="box" x="20" y="85" width="180" height="51" rx="8"/>
-  <text class="bt" x="34" y="106">Data user / Data team</text>
-  <text class="bs" x="34" y="124">jobs · free-form SELECT</text>
-  <rect class="box" x="20" y="200" width="180" height="64" rx="8"/>
-  <text class="bt" x="34" y="222">DE team</text>
-  <text class="bs" x="34" y="240">onboard connections</text>
-  <text class="bs" x="34" y="255">UI · PR YAML · ingestctl</text>
-  <rect class="box" x="20" y="320" width="180" height="120" rx="8"/>
-  <text class="bt" x="34" y="342">Config files (Git)</text>
-  <text class="bs" x="34" y="364">templates/</text>
-  <text class="bs" x="34" y="382">connections/&lt;name&gt;.yaml</text>
-  <text class="bs" x="34" y="400">jobs/&lt;name&gt;.yaml</text>
-  <text class="bs" x="34" y="418">one file = one DAG</text>
-
-  <!-- VM 1 -->
-  <rect class="zone" x="240" y="50" width="370" height="510" rx="10"/>
-  <text class="zl" x="258" y="72">VM 1 · UI · API · AIRFLOW · JOBMANAGER</text>
-  <rect class="box" x="260" y="85" width="330" height="51" rx="8"/>
-  <text class="bt" x="276" y="106">Web UI · React · shadcn/ui</text>
-  <text class="bs" x="276" y="124">connections · job wizard · YAML · runs</text>
-  <rect class="box hl" x="260" y="150" width="330" height="110" rx="8"/>
-  <text class="bt" x="276" y="172">Ingestion API · FastAPI</text>
-  <rect class="row" x="275" y="184" width="300" height="30" rx="6"/>
-  <text class="rt" x="289" y="204">SQL check · preview</text>
-  <text class="bs" x="563" y="204" text-anchor="end">sqlglot</text>
-  <rect class="row" x="275" y="220" width="300" height="30" rx="6"/>
-  <text class="rt" x="289" y="240">Config store</text>
-  <text class="bs" x="563" y="240" text-anchor="end">writes YAML</text>
-  <rect class="box hl" x="260" y="275" width="330" height="50" rx="8"/>
-  <text class="bt" x="276" y="295">Flink JobManager</text>
-  <text class="bs" x="276" y="313">REST :8081 · runs the PyFlink runner</text>
-  <rect class="box hl" x="260" y="350" width="330" height="125" rx="8"/>
-  <text class="bt" x="276" y="372">Airflow · DAG factory</text>
-  <text class="bs" x="276" y="390">one DAG per job: ingest__&lt;name&gt;</text>
-  <rect class="row" x="275" y="402" width="300" height="30" rx="6"/>
-  <text class="rt" x="289" y="422">preflight → render → submit</text>
-  <rect class="row" x="275" y="438" width="300" height="30" rx="6"/>
-  <text class="rt" x="289" y="458">wait → verify → publish</text>
-  <rect class="box" x="260" y="490" width="160" height="56" rx="8"/>
-  <text class="bt" x="276" y="512">PostgreSQL</text>
-  <text class="bs" x="276" y="530">Airflow · runs</text>
-  <rect class="box" x="430" y="490" width="160" height="56" rx="8"/>
-  <text class="bt" x="446" y="512">Secrets</text>
-  <text class="bs" x="446" y="530">env:// · kv:// refs</text>
-
-  <!-- VM 2 -->
-  <rect class="zone" x="650" y="50" width="280" height="510" rx="10"/>
-  <text class="zl" x="668" y="72">VM 2 · FLINK TASKMANAGERS</text>
-  <rect class="run" x="670" y="85" width="240" height="235" rx="8"/>
-  <text class="bt" x="686" y="107">Session cluster workers</text>
-  <rect class="box" x="690" y="120" width="200" height="110" rx="6"/>
-  <text class="bt" x="704" y="142">TaskManager × N</text>
-  <text class="bs" x="704" y="160">slots shared by runs</text>
-  <rect class="row" x="705" y="172" width="170" height="42" rx="6"/>
-  <text class="rt" x="719" y="198">ingestion job (SQL)</text>
-  <text class="bs" x="690" y="262">runtime-mode = BATCH</text>
-  <text class="bs" x="690" y="280">bounded sources</text>
-  <text class="bs" x="690" y="298">all splits read → FINISHED</text>
-  <rect class="dash" x="670" y="440" width="240" height="48" rx="8"/>
-  <text class="bt" x="686" y="460">Prometheus · Grafana</text>
-  <text class="bs" x="686" y="477">metrics · alerts (phase 5)</text>
-  <rect class="dash" x="670" y="498" width="240" height="44" rx="8"/>
-  <text class="bt" x="686" y="525">Flink History Server</text>
-
-  <!-- Sources -->
-  <rect class="zone" x="970" y="50" width="250" height="240" rx="10"/>
-  <text class="zl" x="988" y="72">SOURCES</text>
-  <rect class="box" x="990" y="90" width="210" height="52" rx="8"/>
-  <text class="bt" x="1004" y="111">SQL Server</text>
-  <text class="bs" x="1004" y="129">mssql-jdbc · read replica</text>
-  <rect class="box" x="990" y="152" width="210" height="52" rx="8"/>
-  <text class="bt" x="1004" y="173">PostgreSQL</text>
-  <text class="bs" x="1004" y="191">pgjdbc · read replica</text>
-  <rect class="box" x="990" y="214" width="210" height="52" rx="8"/>
-  <text class="bt" x="1004" y="235">BigQuery</text>
-  <text class="bs" x="1004" y="253">Storage Read API</text>
-
-  <!-- Lake -->
-  <rect class="zone" x="970" y="320" width="250" height="240" rx="10"/>
-  <text class="zl" x="988" y="342">ADLS GEN2 · container raw</text>
-  <rect class="box" x="990" y="360" width="210" height="50" rx="8"/>
-  <text class="bt" x="1004" y="380">delta/&lt;sys&gt;/&lt;table&gt;</text>
-  <text class="bs" x="1004" y="397">_delta_log · ingest_date=…</text>
-  <rect class="box" x="990" y="420" width="210" height="50" rx="8"/>
-  <text class="bt" x="1004" y="440">parquet/&lt;sys&gt;/&lt;table&gt;</text>
-  <text class="bs" x="1004" y="457">ingest_date=… · _SUCCESS</text>
-  <rect class="dash" x="990" y="480" width="210" height="50" rx="8"/>
-  <text class="bt" x="1004" y="500">_staging/&lt;run_id&gt;</text>
-  <text class="bs" x="1004" y="517">invisible until publish</text>
-
-  <!-- Edges -->
-  <path class="edge" d="M200 110 H258" marker-end="url(#arr)"/>
-  <path class="edge" d="M425 136 V148" marker-end="url(#arr)"/>
-  <path class="edge" d="M110 264 V318" marker-end="url(#arr)"/>
-  <path class="edge" d="M273 235 H222 V360 H202" marker-end="url(#arr)"/>
-  <path class="edge" d="M200 420 H234 V380 H258" marker-end="url(#arr)"/>
-  <path class="edge pre" d="M575 199 H620 V28 H1095 V48" marker-end="url(#arr)"/>
-  <text class="el" x="660" y="45">preview · preflight: schema · bounds · COUNT(*)</text>
-  <path class="edge" d="M400 348 V327" marker-end="url(#arr)"/>
-  <path class="edge" d="M450 327 V348" marker-end="url(#arr)"/>
-  <path class="edge" d="M590 300 H640 V175 H688" marker-end="url(#arr)"/>
-  <path class="edge" d="M968 170 H945 V150 H892" marker-end="url(#arr)"/>
-  <path class="edge" d="M890 210 H955 V505 H988" marker-end="url(#arr)"/>
-  <path class="edge" d="M575 453 H632 V600 H1095 V562" marker-end="url(#arr)"/>
-  <text class="el" x="650" y="622">verify row count → publish staged files (rename or Delta commit)</text>
-  <path class="aux" d="M340 475 V488" marker-end="url(#arrm)"/>
-  <path class="aux" d="M510 475 V488" marker-end="url(#arrm)"/>
-
-  <!-- Step badges -->
-  <circle class="badge-a" cx="110" cy="291" r="10"/><text class="bn" x="110" y="295">A</text>
-  <circle class="badge" cx="229" cy="110" r="10"/><text class="bn" x="229" y="114">1</text>
-  <circle class="badge" cx="760" cy="28" r="10"/><text class="bn" x="760" y="32">2</text>
-  <circle class="badge" cx="222" cy="300" r="10"/><text class="bn" x="222" y="304">3</text>
-  <circle class="badge" cx="234" cy="400" r="10"/><text class="bn" x="234" y="404">4</text>
-  <circle class="badge" cx="425" cy="338" r="10"/><text class="bn" x="425" y="342">5</text>
-  <circle class="badge" cx="640" cy="240" r="10"/><text class="bn" x="640" y="244">6</text>
-  <circle class="badge" cx="920" cy="150" r="10"/><text class="bn" x="920" y="154">7</text>
-  <circle class="badge" cx="955" cy="420" r="10"/><text class="bn" x="955" y="424">8</text>
-  <circle class="badge" cx="860" cy="600" r="10"/><text class="bn" x="860" y="604">9</text>
+  <rect class="bg" x="0" y="0" width="1240" height="620"/>
+  <text class="title" x="20" y="28">data-onboarding-ingestion</text>
+  <text class="bs" x="20" y="44">how data is read and written: Web UI · API · templates · PyFlink runner · Flink</text>
+  <text class="zl" x="20" y="92">USERS</text>
+  <rect class="box" x="20" y="100" width="180" height="56" rx="8"/>
+  <text class="bt" x="34" y="122">Data user / DE team</text>
+  <text class="bs" x="34" y="140">connections · jobs · SQL</text>
+  <rect class="dash" x="20" y="250" width="180" height="190" rx="8"/>
+  <text class="bt" x="34" y="272">data-onboarding-orchestration</text>
+  <text class="bs" x="34" y="290">separate repository</text>
+  <rect class="row" x="32" y="298" width="156" height="28" rx="6"/>
+  <text class="rt" x="44" y="317">pipelines/ ← PR merged</text>
+  <rect class="row" x="32" y="332" width="156" height="28" rx="6"/>
+  <text class="rt" x="44" y="351">Airflow DAG factory</text>
+  <rect class="row" x="32" y="366" width="156" height="28" rx="6"/>
+  <text class="rt" x="44" y="385">pools · Assets · dbt</text>
+  <rect class="zone" x="240" y="60" width="400" height="530" rx="10"/>
+  <text class="zl" x="258" y="82">INGESTION STACK · VM 1</text>
+  <rect class="box" x="260" y="90" width="360" height="54" rx="8"/>
+  <text class="bt" x="274" y="112">Web UI · React · shadcn/ui</text>
+  <text class="bs" x="274" y="130">connections · job wizard · YAML preview</text>
+  <rect class="box hl" x="260" y="160" width="360" height="160" rx="8"/>
+  <text class="bt" x="274" y="182">Ingestion API · FastAPI</text>
+  <rect class="row" x="272" y="194" width="336" height="28" rx="6"/>
+  <text class="rt" x="284" y="213">SQL check · preview</text>
+  <text class="bs" x="598" y="213" text-anchor="end">sqlglot</text>
+  <rect class="row" x="272" y="228" width="336" height="28" rx="6"/>
+  <text class="rt" x="284" y="247">Templates · schemas</text>
+  <text class="bs" x="598" y="247" text-anchor="end">validates</text>
+  <rect class="row" x="272" y="262" width="336" height="28" rx="6"/>
+  <text class="rt" x="284" y="281">Pull request publisher</text>
+  <text class="bs" x="598" y="281" text-anchor="end">GitHub REST</text>
+  <rect class="box hl" x="260" y="340" width="360" height="62" rx="8"/>
+  <text class="bt" x="274" y="362">Flink JobManager</text>
+  <text class="bs" x="274" y="380">REST :8081 · PyFlink runner (phase 4)</text>
+  <rect class="box" x="260" y="418" width="360" height="62" rx="8"/>
+  <text class="bt" x="274" y="440">Redpanda</text>
+  <text class="bs" x="274" y="458">landing of API sources · topic ingest.&lt;job&gt;</text>
+  <rect class="box" x="260" y="496" width="360" height="76" rx="8"/>
+  <text class="bt" x="274" y="518">code/templates</text>
+  <text class="bs" x="274" y="536">sources/ · sinks/ · schemas/</text>
+  <text class="bs" x="274" y="552">read-only contract with the DAG factory</text>
+  <rect class="zone" x="680" y="60" width="260" height="530" rx="10"/>
+  <text class="zl" x="698" y="82">VM 2 · FLINK TASKMANAGERS</text>
+  <rect class="run" x="700" y="90" width="220" height="250" rx="8"/>
+  <text class="bt" x="716" y="112">Session cluster workers</text>
+  <rect class="box" x="720" y="126" width="180" height="120" rx="8"/>
+  <text class="bt" x="734" y="148">TaskManager × N</text>
+  <text class="bs" x="734" y="166">slots shared by runs</text>
+  <rect class="row" x="732" y="174" width="156" height="28" rx="6"/>
+  <text class="rt" x="744" y="193">ingestion job (SQL)</text>
+  <text class="bs" x="716" y="274">runtime-mode = BATCH</text>
+  <text class="bs" x="716" y="292">bounded sources</text>
+  <text class="bs" x="716" y="310">all splits read → FINISHED</text>
+  <rect class="dash" x="700" y="500" width="220" height="70" rx="8"/>
+  <text class="bt" x="714" y="522">Prometheus · Grafana</text>
+  <text class="bs" x="714" y="540">metrics · alerts (phase 5)</text>
+  <rect class="zone" x="980" y="60" width="240" height="260" rx="10"/>
+  <text class="zl" x="998" y="82">SOURCES</text>
+  <rect class="box" x="1000" y="90" width="200" height="52" rx="8"/>
+  <text class="bt" x="1014" y="112">SQL Server</text>
+  <text class="bs" x="1014" y="130">mssql-jdbc · read replica</text>
+  <rect class="box" x="1000" y="152" width="200" height="52" rx="8"/>
+  <text class="bt" x="1014" y="174">PostgreSQL · MySQL</text>
+  <text class="bs" x="1014" y="192">JDBC · read-only login</text>
+  <rect class="box" x="1000" y="214" width="200" height="52" rx="8"/>
+  <text class="bt" x="1014" y="236">REST API</text>
+  <text class="bs" x="1014" y="254">fetched by Airflow → Redpanda</text>
+  <rect class="zone" x="980" y="340" width="240" height="250" rx="10"/>
+  <text class="zl" x="998" y="362">ADLS GEN2 · container raw</text>
+  <rect class="box" x="1000" y="370" width="200" height="50" rx="8"/>
+  <text class="bt" x="1014" y="392">delta/&lt;sys&gt;/&lt;table&gt;</text>
+  <text class="bs" x="1014" y="410">_delta_log · ingest_date=…</text>
+  <rect class="box" x="1000" y="430" width="200" height="50" rx="8"/>
+  <text class="bt" x="1014" y="452">parquet/&lt;sys&gt;/&lt;table&gt;</text>
+  <text class="bs" x="1014" y="470">ingest_date=… · _SUCCESS</text>
+  <rect class="dash" x="1000" y="490" width="200" height="50" rx="8"/>
+  <text class="bt" x="1014" y="512">_staging/&lt;run_id&gt;</text>
+  <text class="bs" x="1014" y="530">invisible until publish</text>
+  <path class="edge" d="M200 128 H258" marker-end="url(#arr)"/>
+  <path class="edge" d="M440 144 V158" marker-end="url(#arr)"/>
+  <path class="edge pre" d="M620 215 H650 V38 H1100 V88" marker-end="url(#arr)"/>
+  <text class="el" x="660" y="33" text-anchor="start">preview · test connection (read-only login)</text>
+  <path class="edge" d="M260 296 H230 V330 H202" marker-end="url(#arr)"/>
+  <text class="el" x="222" y="288" text-anchor="end">PR</text>
+  <path class="edge" d="M200 380 H258" marker-end="url(#arr)"/>
+  <text class="el" x="229" y="370" text-anchor="middle">REST</text>
+  <path class="edge" d="M620 372 H645 V160 H718" marker-end="url(#arr)"/>
+  <path class="edge" d="M620 448 H665 V200 H718" marker-end="url(#arr)"/>
+  <path class="edge" d="M900 190 H960 V116 H998" marker-end="url(#arr)"/>
+  <path class="edge" d="M900 215 H970 V178 H998" marker-end="url(#arr)"/>
+  <path class="edge" d="M900 246 H940 V450 H998" marker-end="url(#arr)"/>
+  <path class="aux" d="M200 420 H224 V540 H258" marker-end="url(#arrm)"/>
+  <circle class="badge" cx="229" cy="128" r="10"/><text class="bn" x="229" y="132">1</text>
+  <circle class="badge" cx="760" cy="38" r="10"/><text class="bn" x="760" y="42">2</text>
+  <circle class="badge-a" cx="230" cy="310" r="10"/><text class="bn" x="230" y="314">3</text>
+  <circle class="badge" cx="229" cy="380" r="10"/><text class="bn" x="229" y="384">4</text>
+  <circle class="badge" cx="645" cy="260" r="10"/><text class="bn" x="645" y="264">5</text>
+  <circle class="badge" cx="960" cy="160" r="10"/><text class="bn" x="960" y="164">6</text>
+  <circle class="badge" cx="940" cy="380" r="10"/><text class="bn" x="940" y="384">7</text>
+  <text class="bs" x="20" y="604">1 create · 2 preview · 3 save opens a pull request · 4 Airflow submits the run · 5 Flink reads the source · 6 JDBC / Redpanda · 7 Parquet or Delta</text>
 </svg>

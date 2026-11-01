@@ -4,7 +4,7 @@
 # so the script of the target commit runs, not the one currently checked out.
 #
 # Usage: deploy.sh <vm1|vm2> <sha> [--pipelines-only] [--no-cache]
-#   --pipelines-only  only move pipelines/ to <sha> and resync Airflow pools; no rebuild, no restart (VM 1)
+#   --pipelines-only  only move pipelines/ to <sha>; no rebuild, no restart (VM 1)
 #   --no-cache        rebuild every image layer (default: reuse the cache, but always pull newer base images)
 set -euo pipefail
 
@@ -37,9 +37,7 @@ echo "Deploying ${vm}: $(git rev-parse --short HEAD) -> ${sha:0:7}"
 git checkout --quiet --detach "$sha"
 
 if [[ "$pipelines_only" == true ]]; then
-  # The DAG processor picks up the files by itself; pools come from the connection files.
-  "${compose[@]}" exec -T airflow-scheduler bash -c \
-    'python /opt/airflow/scripts/sync_pools.py > /tmp/pools.json && airflow pools import /tmp/pools.json'
+  # Airflow mounts this checkout (ADR-0016): the DAG processor and the pool sync pick up the files by themselves.
   echo "Pipelines at ${sha:0:7}"
   exit 0
 fi

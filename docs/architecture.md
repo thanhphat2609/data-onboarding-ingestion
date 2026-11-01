@@ -84,15 +84,15 @@ Python 3.12 / FastAPI. Business logic lives in a shared library in `code/control
 
 ### 3.3 Airflow
 
-Airflow 3 orchestrates every run ([ADR-0008](adr/0008-airflow-dag-per-job.md)):
+Airflow 3 orchestrates every run ([ADR-0008](adr/0008-airflow-dag-per-job.md)). It lives in [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration) ([ADR-0016](adr/0016-airflow-moves-to-orchestration.md)) and reads this repository's files from a read-only checkout:
 
-- One factory file, `code/airflow/dags/ingestion_dag_factory.py`, registers **one DAG per job file**, with DAG id **`ingest__<name>`**.
+- One factory file, `dags/ingestion/ingestion_dag_factory.py` in that repository, registers **one DAG per job file**, with DAG id **`ingest__<name>`**.
 - Tasks: preflight → render → submit → wait → verify → publish, each calling the shared library. `wait` is deferrable and polls the Flink REST API.
 - `max_active_runs=1` per DAG; pool `conn__<connection>` limits concurrent runs per connection; a slot pool limits the total parallelism sent to Flink.
 - On-demand runs from the UI or the CLI trigger the same DAG through the Airflow REST API.
 - **API sources** (`rest_api` template, which declares `fetch: rest_api`) get a `fetch` task before `submit`: it pages through the API, writes one Redpanda message per record to the job's topic `ingest.<job>` and hands the run's offsets to `submit` (§3.9).
 - The `publish` task emits an Airflow Asset for the table root URI, so downstream DAGs (for example dbt in another repository) run when the table is published.
-- Airflow is shared: each repository owns `dags/<repo>/` and `projects/<repo>/` on the Airflow host; this repository's DAGs live in `dags/ingestion/`.
+- Airflow is shared: DAGs for each repository live in `dags/<repo>/` of data-onboarding-orchestration.
 
 ### 3.4 Metadata DB
 
@@ -282,7 +282,7 @@ Details: [ADR-0007](adr/0007-flink-standalone-session-cluster.md), [ADR-0009](ad
 
 | Environment | Layout | Storage | Purpose |
 |---|---|---|---|
-| **non-prod** | GitHub Codespaces; one Docker Compose project: Web UI, API, Airflow, PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)), Flink JobManager + TaskManager, Redpanda ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)). The test sources (SQL Server, PostgreSQL, MySQL, a REST API) are a separate Compose project, `non-prod/example-sources/`, started by hand for demos; `pipelines/` starts empty | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
+| **non-prod** | GitHub Codespaces; two Docker Compose projects: Airflow and PostgreSQL (local `local-db` profile, or the shared server when the agent stack runs on the same host, [ADR-0011](adr/0011-shared-postgresql-server.md)) in data-onboarding-orchestration, and here Web UI, API, Flink JobManager + TaskManager, Redpanda ([ADR-0015](adr/0015-rest-api-source-via-redpanda.md)). The test sources (SQL Server, PostgreSQL, MySQL, a REST API) are a separate Compose project, `non-prod/example-sources/`, started by hand for demos; `pipelines/` starts empty | Dev ADLS Gen2 account (Azurite does not fully support `abfss://` with hierarchical namespace) | Phases 1–5 |
 | **prod** | VM 1: Web UI, API, Airflow, Flink JobManager, Redpanda (landing for API sources; VM 2 reads it on port 19092), plus the data-onboarding-agent stack (agent web app, the shared PostgreSQL server, SearXNG for its web research). VM 2: Flink TaskManagers | Prod ADLS Gen2 account | Phase 6, once the VMs exist |
 
 Prod network requirements: VM 2 reaches the JobManager RPC and blob server ports on VM 1; TaskManager ports use fixed ranges; both VMs reach the sources and ADLS Gen2.
@@ -291,7 +291,7 @@ All container definitions live in `infrastructure/`:
 
 ```
 infrastructure/
-  docker/            Dockerfiles: flink, airflow, api, ui
+  docker/            Dockerfiles: flink, api, ui
   non-prod/          docker-compose.yml, .env.example
   prod/vm1/          docker-compose.yml (Phase 6)
   prod/vm2/          docker-compose.yml (Phase 6)

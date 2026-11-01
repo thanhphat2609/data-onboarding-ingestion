@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares non-prod: .env files with random secrets (the platform's, and each example source's), sources.env (the
+# Prepares non-prod: .env files (the platform's, and each example source's, with random secrets), sources.env (the
 # source secrets the platform reads, like prod's GitHub secrets), the shared run directory and the Docker networks.
 # Safe to run again; existing values are kept.
 set -euo pipefail
@@ -25,13 +25,8 @@ prepare_env() {
 
   while grep -qE '^[A-Z0-9_]+=__GENERATE__$' "$file"; do
     key=$(grep -m1 -E '^[A-Z0-9_]+=__GENERATE__$' "$file" | cut -d= -f1)
-    if [[ "$key" == "AIRFLOW_FERNET_KEY" ]]; then
-      # Fernet keys are 32 random bytes, URL-safe base64.
-      value=$(openssl rand -base64 32 | tr '+/' '-_')
-    else
-      # Prefix guarantees SQL Server password complexity.
-      value="Aa1-$(openssl rand -hex 16)"
-    fi
+    # Prefix guarantees SQL Server password complexity.
+    value="Aa1-$(openssl rand -hex 16)"
     sed -i "s|^${key}=__GENERATE__$|${key}=${value}|" "$file"
   done
 }
@@ -54,15 +49,15 @@ while IFS= read -r key; do
   fi
 done < <(grep -oE '^[A-Z0-9_]+' sources.env.example)
 
-# Written by Airflow (uid 50000), read by the Flink JobManager.
+# Written by Airflow (uid 50000, data-onboarding-orchestration mounts it), read by the Flink JobManager.
 mkdir -p data/runs
 chmod 777 data/runs
 # Phase 2 spike output, written by the Flink TaskManager (uid 9999).
 mkdir -p data/spike-out
 chmod 777 data/spike-out
 
-# Airflow joins the platform network (ADR-0011). The data-onboarding-agent stack creates it when it runs on
-# this host; create it here for a standalone non-prod (COMPOSE_PROFILES=local-db).
+# Airflow reaches this stack over the platform network (ADR-0016). The data-onboarding-agent stack creates it when it
+# runs on this host; create it here otherwise.
 if ! docker network inspect data-platform >/dev/null 2>&1; then
   docker network create data-platform >/dev/null
   echo "Created Docker network data-platform"

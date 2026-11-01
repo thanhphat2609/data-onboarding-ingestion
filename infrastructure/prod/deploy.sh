@@ -3,19 +3,16 @@
 #   git -C <repo> fetch --prune origin && git -C <repo> show <sha>:infrastructure/prod/deploy.sh | bash -s -- ...
 # so the script of the target commit runs, not the one currently checked out.
 #
-# Usage: deploy.sh <vm1|vm2> <sha> [--pipelines-only] [--no-cache]
-#   --pipelines-only  only move pipelines/ to <sha>; no rebuild, no restart (VM 1)
+# Usage: deploy.sh <vm1|vm2> <sha> [--no-cache]
 #   --no-cache        rebuild every image layer (default: reuse the cache, but always pull newer base images)
 set -euo pipefail
 
 vm="${1:?vm1 or vm2}"
 sha="${2:?commit sha}"
 shift 2
-pipelines_only=false
 no_cache=()
 for arg in "$@"; do
   case "$arg" in
-    --pipelines-only) pipelines_only=true ;;
     --no-cache) no_cache=(--no-cache) ;;
     *) echo "Unknown option $arg" >&2; exit 2 ;;
   esac
@@ -25,8 +22,7 @@ repo="${PROD_REPO_DIR:-$(pwd)}"
 cd "$repo"
 compose=(docker compose -f "infrastructure/prod/${vm}/docker-compose.yml")
 
-# Until open question 7 is decided, the Web UI writes job files on VM 1 without committing them. A checkout must
-# never overwrite them: stop and let a person commit or discard the changes first.
+# A checkout must never overwrite local changes: stop and let a person commit or discard them first.
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "::error::Uncommitted changes in ${repo} on ${vm}; commit or discard them, then re-run the deploy:" >&2
   git status --short >&2
@@ -35,12 +31,6 @@ fi
 
 echo "Deploying ${vm}: $(git rev-parse --short HEAD) -> ${sha:0:7}"
 git checkout --quiet --detach "$sha"
-
-if [[ "$pipelines_only" == true ]]; then
-  # Airflow mounts this checkout (ADR-0016): the DAG processor and the pool sync pick up the files by themselves.
-  echo "Pipelines at ${sha:0:7}"
-  exit 0
-fi
 
 "${compose[@]}" build --pull "${no_cache[@]}"
 "${compose[@]}" up -d --remove-orphans --wait --wait-timeout 600

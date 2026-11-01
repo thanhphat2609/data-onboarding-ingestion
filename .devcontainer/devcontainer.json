@@ -17,6 +17,13 @@
     "1433": { "label": "SQL Server", "onAutoForward": "ignore" },
     "5173": { "label": "Web UI (dev server)", "onAutoForward": "notify" }
   },
+  // Codespaces asks for these once (user secrets) and exports them to the Compose stack.
+  "secrets": {
+    "ORCHESTRATION_GITHUB_TOKEN": {
+      "description": "Fine-grained token for data-onboarding-orchestration: Contents and Pull requests, read and write. The Ingestion API opens a pull request there for every save.",
+      "documentationUrl": "https://github.com/thanhphat2609/data-onboarding-ingestion/blob/main/infrastructure/README.md#github-secrets-and-variables"
+    }
+  },
   "postCreateCommand": "bash infrastructure/non-prod/bootstrap.sh",
   "postStartCommand": "docker compose -f infrastructure/non-prod/docker-compose.yml up -d --build"
 }

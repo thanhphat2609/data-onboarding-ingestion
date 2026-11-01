@@ -35,7 +35,7 @@ This repository should change rarely: a new source template, a new sink, or a ne
 - Nothing runs from this stack alone, and nothing takes effect on save: a change is live after the merge.
 - The API holds a GitHub token. It can only create branches and pull requests on one repository.
 - Needed in data-onboarding-orchestration (not done by this change): `pipelines/jobs/` and `pipelines/connections/` in its own tree; its Compose files and DAG factory read them there instead of from the ingestion checkout; a CI check that validates them with the schemas from here; the `fetch` task still imports `ingestion.rest_api` from this checkout until that code moves too.
-- Prod keeps its old shape (`pipelines/`-only sync, [ADR-0012](0012-cicd-ssh-deploy.md)) until Phase 6 reworks it for this flow.
+- Prod: the `pipelines/`-only sync is gone from this repository's Deploy workflow; the orchestration repository syncs its own files. The prod API gets `SAVE_MODE=pull_request` and the secret `ORCHESTRATION_GITHUB_TOKEN`, written like every setting by the Deploy workflow ([ADR-0013](0013-prod-settings-in-github.md)); non-prod takes it from the Codespaces user secret of the same name.
 - Branch names carry a timestamp to the second; two saves of the same file in the same second would collide.
 
 ## Alternatives considered

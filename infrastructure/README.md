@@ -18,7 +18,7 @@ Flink uses `docker/flink/` from Phase 2. Airflow and its metadata database are i
 | Service | Port | Notes |
 |---|---|---|
 | Web UI | 3000 | Calls the Ingestion API through `/api` on the same port; `API_MODE=mock` in `.env` switches back to the in-browser mock |
-| Ingestion API | 8000 | Writes `pipelines/connections/` and `pipelines/jobs/`, which Airflow reads; docs at `/api/docs` |
+| Ingestion API | 8000 | Validates connections and jobs, tests sources, and opens a pull request on data-onboarding-orchestration for every save ([ADR-0017](../docs/adr/0017-ui-opens-pull-requests-on-orchestration.md)); docs at `/api/docs` |
 | Flink web UI | 8081 | Session cluster: one JobManager, one TaskManager with 4 slots |
 | Redpanda | internal | Landing for API sources: Kafka API `redpanda:9092`, one topic `ingest.<job>` per API job, 7-day retention. `docker compose -f infrastructure/non-prod/docker-compose.yml exec redpanda rpk topic consume ingest.<job> -n 3` |
 
@@ -62,9 +62,7 @@ docker compose up -d --build ui         # rebuild the UI after changes
 
 ### Try a job
 
-`pipelines/` starts empty. Start the example sources and create a connection and a job in the Web UI, step by step: [non-prod/example-sources/README.md](non-prod/example-sources/README.md). The job appears in Airflow as DAG `ingest__<name>` (new DAGs start paused); in Phase 1 a run executes Flink's WordCount example on the session cluster, visible in the Flink web UI.
-
-After adding or changing a connection file by hand, the orchestration stack updates its pool within a minute.
+There are no example connections or jobs. Start the example sources and create a connection and a job in the Web UI, step by step: [non-prod/example-sources/README.md](non-prod/example-sources/README.md). Each save opens a pull request on data-onboarding-orchestration; it needs the Codespaces user secret `ORCHESTRATION_GITHUB_TOKEN` (a fine-grained token for that repository: Contents and Pull requests, read and write), or `SAVE_MODE=disk` in `.env` to keep the files local. After the merge the job appears in Airflow as DAG `ingest__<name>` (new DAGs start paused).
 
 To work on the UI with hot reload, run `npm ci && npm run dev -- --port 5173` in `code/ui/` (see [code/ui/README.md](../code/ui/README.md)).
 

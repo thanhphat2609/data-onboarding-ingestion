@@ -2,6 +2,7 @@
 
 - Status: Proposed
 - Date: 2026-10-27
+- Amended by: [ADR-0017](0017-ui-opens-pull-requests-on-orchestration.md) (the pull request targets the orchestration repository; non-prod does it too)
 - Answers: open question 7 ([roadmap](../roadmap.md#open-questions))
 - Builds on: [ADR-0012](0012-cicd-ssh-deploy.md) (the `pipelines/`-only sync), [ADR-0013](0013-prod-settings-in-github.md) (prod settings in GitHub)
 

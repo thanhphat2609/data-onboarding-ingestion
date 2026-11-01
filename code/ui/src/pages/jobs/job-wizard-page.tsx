@@ -3,6 +3,7 @@ import { cn } from 'cn'
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { toastSaved } from '@/lib/saved-toast'
 import { api } from '@/api/client'
 import { useConnections, useJob, useJobs, useSaveJob } from '@/api/hooks'
 import type { Connection, IngestionJob, QueryPreview, SqlValidation } from '@/api/types'
@@ -113,8 +114,8 @@ function JobWizard({ initial, connections }: { initial?: IngestionJob; connectio
     saveMutation.mutate(
       { job, isNew },
       {
-        onSuccess: () => {
-          toast.success(`Saved pipelines/jobs/${job.name}.yaml`, { description: `Airflow DAG ${dagId(job.name)}` })
+        onSuccess: (saved) => {
+          toastSaved(`job ${job.name}`, saved.pullRequest, `Airflow DAG ${dagId(job.name)} appears after the merge`)
           navigate('/jobs')
         },
         onError: (e) => toast.error('Could not save', { description: e.message }),
@@ -128,7 +129,7 @@ function JobWizard({ initial, connections }: { initial?: IngestionJob; connectio
     <>
       <PageHeader
         title={isNew ? 'New ingestion job' : initial.name}
-        description={isNew ? 'Four steps; the result is one YAML file and one Airflow DAG.' : `Airflow DAG ${dagId(initial.name)}`}
+        description={isNew ? 'Four steps; the result is one YAML file in a pull request, and after the merge one Airflow DAG.' : `Airflow DAG ${dagId(initial.name)}`}
       />
 
       <ol className="mb-6 grid gap-2 sm:grid-cols-4">

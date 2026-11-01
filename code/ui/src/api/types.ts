@@ -29,21 +29,18 @@ export interface IngestionJob {
   tags?: string[]
 }
 
-export type RunState = 'queued' | 'running' | 'success' | 'failed'
-
-export interface RunSummary {
-  runId: string
-  dagId: string
-  ingestDate: string
-  state: RunState
-  startedAt: string
-  trigger: 'manual' | 'schedule'
+/** The pull request a save opened on the orchestration repository (ADR-0017); absent when saved to disk only. */
+export interface PullRequestRef {
+  number: number
+  url: string
+  branch: string
 }
+
+export type Saved<T> = T & { pullRequest?: PullRequestRef }
 
 export interface JobSummary {
   job: IngestionJob
   dagId: string
-  runs: RunSummary[]
 }
 
 export interface InvalidFile {
@@ -72,13 +69,12 @@ export interface IngestionApi {
   readonly mode: 'mock' | 'http'
   listConnections(): Promise<Connection[]>
   getConnection(name: string): Promise<Connection>
-  saveConnection(connection: Connection, isNew: boolean): Promise<Connection>
+  saveConnection(connection: Connection, isNew: boolean): Promise<Saved<Connection>>
   testConnection(connection: Connection): Promise<ConnectionTestResult>
   listJobs(): Promise<JobSummary[]>
   getJob(name: string): Promise<IngestionJob>
-  saveJob(job: IngestionJob, isNew: boolean): Promise<IngestionJob>
+  saveJob(job: IngestionJob, isNew: boolean): Promise<Saved<IngestionJob>>
   listInvalidFiles(): Promise<InvalidFile[]>
   validateSql(connection: string, query: string): Promise<SqlValidation>
   previewQuery(connection: string, query: string): Promise<QueryPreview>
-  triggerRun(jobName: string, ingestDate?: string): Promise<RunSummary>
 }

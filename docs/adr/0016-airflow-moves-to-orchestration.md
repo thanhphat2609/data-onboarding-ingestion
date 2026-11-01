@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-01
+- Amended by: [ADR-0017](0017-ui-opens-pull-requests-on-orchestration.md) (`pipelines/` and the Airflow client leave this repository too)
 - Amends: [ADR-0008](0008-airflow-dag-per-job.md) (where Airflow and the factory live), [ADR-0011](0011-shared-postgresql-server.md) (`local-db`)
 
 ## Context

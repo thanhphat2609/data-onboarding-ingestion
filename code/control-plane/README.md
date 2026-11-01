@@ -8,17 +8,15 @@ The Web UI runs in the browser. It can't read or write files in the repository, 
 
 | Step | Who | What happens |
 |---|---|---|
-| 1. Onboard a connection | UI → API | The API checks the connection against the JSON Schema and the source template, writes `pipelines/connections/<name>.yaml`, and creates or resizes the Airflow pool `conn__<name>` |
+| 1. Onboard a connection | UI → API | The API checks the connection against the JSON Schema and the source template, opens a pull request with `pipelines/connections/<name>.yaml` on the orchestration repository ([ADR-0017](../../docs/adr/0017-ui-opens-pull-requests-on-orchestration.md)), and keeps a working copy in `pipelines/` |
 | 2. Test connection | UI → API → source | The API resolves `env://` secrets (the browser never sees them) and opens a short session with the read-only login |
 | 3. Write the query | UI → API | sqlglot checks it: one read-only `SELECT`, named and unique columns (ADR-0005) |
 | 4. Preview | UI → API → source | First 100 rows and exact column types, using the template's `preflight.preview` snippet |
-| 5. Save the job | UI → API | Validated, then written atomically to `pipelines/jobs/<name>.yaml`. Nothing is sent to Airflow |
-| 6. DAG appears | Airflow | The DAG factory reads the same folder and registers `ingest__<name>` within one parse cycle (about 30 s) |
-| 7. Run now | UI → API → Airflow | The API triggers the DAG through the Airflow REST API (unpausing it first, like Airflow's own trigger form) |
-| 8. Run | Airflow → Flink | The DAG submits the Flink job: a smoke job in Phase 1, the PyFlink runner from Phase 4 |
-| 9. Run history | UI → API → Airflow | Latest runs per DAG from the Airflow REST API |
+| 5. Save the job | UI → API | Validated, then a pull request with `pipelines/jobs/<name>.yaml` on the orchestration repository; the API never calls Airflow |
+| 6. DAG appears | Airflow | After the merge, the DAG factory there registers `ingest__<name>`. Runs and history are watched in Airflow; the Web UI only links to it |
+| 7. Run | Airflow → Flink | The DAG submits the Flink job: a smoke job in Phase 1, the PyFlink runner from Phase 4 |
 
-The YAML files are the only storage: no database tables for connections or jobs. Airflow never talks to the API; both read `pipelines/`.
+The YAML files are the only storage: no database tables for connections or jobs. The API and Airflow never talk to each other; they share the schemas in `code/templates/` and the files in the orchestration repository.
 
 Later phases add to the same library: preflight and the renderer (Phase 3, with `ingestctl`), and the publisher used by the DAG tasks (Phase 5).
 
@@ -32,7 +30,7 @@ src/ingestion/
   templates.py  Template registry, parameter checks, Jinja2 rendering of template snippets
   sql.py        sqlglot checks and the query wrapping used by preview
   sources.py    Test connection and preview, one client per source template (SQL Server: pymssql, PostgreSQL: psycopg, MySQL: PyMySQL)
-  airflow.py    Airflow 3 REST client: trigger, latest runs, pools
+  github.py     Opens the pull request on the orchestration repository (GitHub REST API)
   secrets.py    env:// resolution (kv:// in Phase 6)
   settings.py   Environment variables
 ```
@@ -46,22 +44,22 @@ src/ingestion/
 | `GET /api/connections`, `GET /api/connections/{name}` | Valid connection files |
 | `POST /api/connections`, `PUT /api/connections/{name}` | Create (409 if the file exists), update (name can't change) |
 | `POST /api/connections/{name}/test` | Test the parameters in the body, saved or not |
-| `GET /api/jobs` | Valid jobs with their DAG id and latest runs |
+| `GET /api/jobs` | Valid jobs of the working copy with their DAG id |
 | `GET /api/jobs/{name}`, `POST /api/jobs`, `PUT /api/jobs/{name}` | Read, create, update a job file |
-| `POST /api/jobs/{name}/runs` | Run now; body `{"ingestDate": "YYYY-MM-DD"}` is optional |
-| `GET /api/invalid-files` | Files Airflow skips, with a one-line reason |
+| `GET /api/invalid-files` | Invalid files of the working copy, with a one-line reason |
 | `POST /api/sql/validate`, `POST /api/sql/preview` | Body `{"connection", "query"}` |
 
-OpenAPI docs: `/api/docs`. Errors are `{"detail": "..."}` with 404, 409, 422 (plus `errors`, one per problem) or 502 when Airflow is unreachable.
+OpenAPI docs: `/api/docs`. Errors are `{"detail": "..."}` with 404, 409, 422 (plus `errors`, one per problem) or 502 when GitHub refuses the pull request. With `SAVE_MODE=pull_request`, `POST` and `PUT` of connections and jobs also return `pullRequest` (`number`, `url`, `branch`).
 
 ## Configuration
 
 | Variable | Default | |
 |---|---|---|
-| `INGESTION_PIPELINES_DIR` | `<repo>/pipelines` | Holds `connections/` and `jobs/` |
+| `INGESTION_PIPELINES_DIR` | `<repo>/pipelines` | Working copy with `connections/` and `jobs/` (git-ignored); point it at a checkout of the orchestration repository's `pipelines/` to see what is merged |
 | `INGESTION_TEMPLATES_DIR` | `<repo>/code/templates` | |
-| `AIRFLOW_API_URL` | `http://localhost:8080` | |
-| `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD` | empty | Empty uses the all-admins token of non-prod Airflow |
+| `SAVE_MODE` | `disk` | `pull_request` also opens a pull request on every save (non-prod Compose sets it) |
+| `GITHUB_TOKEN` | empty | Required for `pull_request`: fine-grained, Contents and Pull requests (read and write) on one repository |
+| `ORCHESTRATION_REPOSITORY`, `ORCHESTRATION_BASE_BRANCH`, `ORCHESTRATION_PIPELINES_PATH` | `thanhphat2609/data-onboarding-orchestration`, `main`, `pipelines` | Where the pull request goes |
 | Every `env://<VAR>` a connection uses | | Must be set in the API container (see the Compose file) |
 
 ## Development

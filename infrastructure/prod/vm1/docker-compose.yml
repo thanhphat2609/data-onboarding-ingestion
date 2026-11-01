@@ -26,10 +26,6 @@ services:
       context: ../../..
       dockerfile: infrastructure/docker/api/Dockerfile
     image: ingestion-api:prod
-    environment:
-      AIRFLOW_API_URL: http://airflow-api-server:8080
-      AIRFLOW_USERNAME: admin
-      AIRFLOW_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?}
     env_file:
       - path: sources.env
         required: false

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Test source for Phase 2. Runs once, on the first start of an empty volume (database `shop` exists already).
-# Same model as the SQL Server sample (crm): segments, 10,000 customers, and an empty orders table that
-# seed-large.sh fills with ~10M rows for throughput tests.
+# Same model as the SQL Server sample (crm): segments, 10,000 customers and 5,000 orders (two tables to ingest from
+# one connection in a demo); seed-large.sh refills orders with ~10M rows for throughput tests.
 set -eu
 
 mysql --user=root --password="$MYSQL_ROOT_PASSWORD" shop <<EOSQL
@@ -36,6 +36,12 @@ INSERT INTO customers
 WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10000)
 SELECT i, CONCAT('Customer ', i), CONCAT('customer', i, '@example.com'), i % 3 + 1, i % 50 = 0,
        NOW(3) - INTERVAL (i * 7) MINUTE, NOW(3) - INTERVAL i MINUTE
+FROM n;
+
+INSERT INTO orders
+WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+SELECT i, i % 10000 + 1, (i % 100000) / 100.0, ELT(i % 4 + 1, 'new', 'paid', 'shipped', 'cancelled'),
+       NOW(3) - INTERVAL (i * 3) MINUTE
 FROM n;
 
 -- Dedicated read-only user, as every connection requires (architecture §3.7).

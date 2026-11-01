@@ -8,6 +8,9 @@ sources.env
 *credentials*.json
 service-account*.json
 
+# The Web UI's working copy of saved connections and jobs (ADR-0017); the real files live in data-onboarding-orchestration
+/pipelines/
+
 # Python
 __pycache__/
 *.py[cod]

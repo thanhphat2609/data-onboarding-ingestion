@@ -10,19 +10,14 @@ import type {
   InvalidFile,
   JobSummary,
   QueryPreview,
-  RunState,
-  RunSummary,
 } from '@/api/types'
 
-const STORAGE_KEY = 'ingestion-ui.mock.v1'
+const STORAGE_KEY = 'ingestion-ui.mock.v2'
 
 interface MockState {
   connections: Connection[]
   jobs: IngestionJob[]
-  runs: RunSummary[]
 }
-
-const today = () => new Date().toISOString().slice(0, 10)
 
 function daysAgo(n: number) {
   const d = new Date()
@@ -32,44 +27,8 @@ function daysAgo(n: number) {
 }
 
 function seed(): MockState {
-  const connection: Connection = {
-    kind: 'Connection',
-    name: 'crm-sqlserver-nonprod',
-    template: 'sqlserver@1',
-    owner: 'de-team',
-    params: {
-      host: 'sqlserver',
-      database: 'crm',
-      username: 'svc_ingest_ro',
-      password: 'env://CRM_SQLSERVER_RO_PASSWORD',
-      trust_server_certificate: true,
-    },
-    limits: { max_concurrent_runs: 2 },
-  }
-  const job: IngestionJob = {
-    kind: 'IngestionJob',
-    name: 'crm-customers-daily',
-    owner: 'data-team',
-    connection: connection.name,
-    source: {
-      query: 'SELECT customer_id, full_name, segment_id, updated_at\nFROM dbo.customers\nWHERE is_deleted = 0',
-      read: { partition_column: 'customer_id', partition_num: 4 },
-    },
-    sink: { template: 'adls_parquet@1', params: { storage_account: 'stdatalakedev', path: 'crm/dbo/customers' } },
-    verify: { row_count: 'exact' },
-    runtime: { timeout: '1h', retries: 1 },
-    schedule: '0 2 * * *',
-    tags: ['crm'],
-  }
-  const runs: RunSummary[] = [3, 2, 1].map((n) => ({
-    runId: `scheduled__${daysAgo(n).toISOString()}`,
-    dagId: dagId(job.name),
-    ingestDate: daysAgo(n).toISOString().slice(0, 10),
-    state: n === 2 ? 'failed' : 'success',
-    startedAt: daysAgo(n).toISOString(),
-    trigger: 'schedule',
-  }))
-  return { connections: [connection], jobs: [job], runs }
+  // Like a new prod: nothing exists until it is created in the UI.
+  return { connections: [], jobs: [] }
 }
 
 function load(): MockState {
@@ -96,15 +55,6 @@ const delay = <T>(value: T, ms = 300) => new Promise<T>((resolve) => setTimeout(
 
 function notFound(kind: string, name: string): never {
   throw new Error(`${kind} "${name}" not found`)
-}
-
-/** Mock runs move from queued to running to success based on their age. */
-function liveState(run: RunSummary): RunState {
-  if (run.state !== 'queued' && run.state !== 'running') return run.state
-  const age = Date.now() - new Date(run.startedAt).getTime()
-  if (age < 4_000) return 'queued'
-  if (age < 15_000) return 'running'
-  return 'success'
 }
 
 // Column types of the seeded SQL Server sample tables (infrastructure/non-prod/sqlserver/seed.sql).
@@ -173,10 +123,6 @@ export const mockApi: IngestionApi = {
       state.jobs.map<JobSummary>((job) => ({
         job,
         dagId: dagId(job.name),
-        runs: state.runs
-          .filter((r) => r.dagId === dagId(job.name))
-          .map((r) => ({ ...r, state: liveState(r) }))
-          .slice(-5),
       })),
     ),
 
@@ -215,22 +161,6 @@ export const mockApi: IngestionApi = {
       rows: Array.from({ length: 10 }, (_, row) => columns.map((c) => sampleValue(c, row))),
     }
     return delay(preview, 600)
-  },
-
-  async triggerRun(jobName, ingestDate = today()) {
-    if (!state.jobs.some((j) => j.name === jobName)) notFound('Job', jobName)
-    const now = new Date().toISOString()
-    const run: RunSummary = {
-      runId: `manual__${now}`,
-      dagId: dagId(jobName),
-      ingestDate,
-      state: 'queued',
-      startedAt: now,
-      trigger: 'manual',
-    }
-    state = { ...state, runs: [...state.runs, run] }
-    save()
-    return delay(run)
   },
 }
 

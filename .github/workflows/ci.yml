@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   python:
-    name: Python (lint, types, YAML files)
+    name: Python (lint, types, tests)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -38,15 +38,6 @@ jobs:
       - name: Pytest (offline, fake API and in-memory landing)
         working-directory: code/control-plane
         run: pytest -q
-      - name: Validate pipelines/ (connections and jobs)
-        # The paths are needed: the installed package can't find the checkout by itself.
-        env:
-          INGESTION_PIPELINES_DIR: pipelines
-          INGESTION_TEMPLATES_DIR: code/templates
-        run: |
-          python -m ingestion.validate
-          # The demo's example files (infrastructure/non-prod/example-sources/examples/) stay valid too.
-          INGESTION_PIPELINES_DIR=infrastructure/non-prod/example-sources/examples python -m ingestion.validate
 
   ui:
     name: Web UI (types, lint, build)

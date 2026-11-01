@@ -2,6 +2,7 @@ import { CircleCheckIcon, CircleXIcon, LoaderIcon, PlugIcon } from 'lucide-react
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { toastSaved } from '@/lib/saved-toast'
 import { api } from '@/api/client'
 import { useConnection, useConnections, useSaveConnection } from '@/api/hooks'
 import type { Connection, ConnectionTestResult } from '@/api/types'
@@ -97,8 +98,8 @@ function ConnectionForm({ initial }: { initial?: Connection }) {
     saveMutation.mutate(
       { connection, isNew },
       {
-        onSuccess: () => {
-          toast.success(`Saved pipelines/connections/${name}.yaml`)
+        onSuccess: (saved) => {
+          toastSaved(`connection ${name}`, saved.pullRequest)
           navigate('/connections')
         },
         onError: (e) => toast.error('Could not save', { description: e.message }),

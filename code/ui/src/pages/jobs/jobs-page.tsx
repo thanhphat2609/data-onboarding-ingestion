@@ -1,10 +1,8 @@
-import { FileWarningIcon, MoreHorizontalIcon, PlayIcon, PlusIcon, WorkflowIcon } from 'lucide-react'
+import { ExternalLinkIcon, FileWarningIcon, MoreHorizontalIcon, PlusIcon, WorkflowIcon } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
-import { toast } from 'sonner'
-import { useInvalidFiles, useJobs, useTriggerRun } from '@/api/hooks'
+import { useInvalidFiles, useJobs } from '@/api/hooks'
 import type { JobSummary } from '@/api/types'
 import { PageHeader } from '@/components/page-header'
-import { RunDots } from '@/components/run-dots'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -32,7 +30,8 @@ export function JobsPage() {
         title="Ingestion jobs"
         description={
           <>
-            Each job file becomes its own Airflow DAG named <code className="font-mono">ingest__&lt;name&gt;</code>.
+            Saving a job opens a pull request on the orchestration repository; after the merge it becomes the Airflow DAG{' '}
+            <code className="font-mono">ingest__&lt;name&gt;</code>, where it is run and monitored.
           </>
         }
         actions={
@@ -46,7 +45,7 @@ export function JobsPage() {
         <Alert variant="destructive" className="mb-4">
           <FileWarningIcon />
           <AlertTitle>
-            {invalid.data.length} job file{invalid.data.length > 1 ? 's are' : ' is'} invalid and not loaded by Airflow
+            {invalid.data.length} job file{invalid.data.length > 1 ? 's are' : ' is'} invalid and can't be used
           </AlertTitle>
           <AlertDescription>
             <ul className="mt-1 grid gap-0.5">
@@ -68,7 +67,6 @@ export function JobsPage() {
               <TableHead>Connection</TableHead>
               <TableHead>Schedule</TableHead>
               <TableHead>Destination</TableHead>
-              <TableHead>Recent runs</TableHead>
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
@@ -76,7 +74,7 @@ export function JobsPage() {
             {jobs.isPending &&
               [0, 1, 2].map((i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={6} className="pl-4">
+                  <TableCell colSpan={5} className="pl-4">
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
@@ -84,9 +82,9 @@ export function JobsPage() {
             {jobs.data?.map((summary) => <JobRow key={summary.job.name} summary={summary} />)}
             {jobs.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
                   <WorkflowIcon className="mx-auto mb-2 size-6" />
-                  No jobs yet. Create one to get your first DAG.
+                  No jobs yet. Create one; its pull request creates the DAG.
                 </TableCell>
               </TableRow>
             )}
@@ -98,16 +96,9 @@ export function JobsPage() {
 }
 
 function JobRow({ summary }: { summary: JobSummary }) {
-  const { job, dagId, runs } = summary
+  const { job, dagId } = summary
   const navigate = useNavigate()
-  const trigger = useTriggerRun()
   const editUrl = `/jobs/${job.name}/edit`
-
-  const runNow = () =>
-    trigger.mutate(job.name, {
-      onSuccess: (run) => toast.success(`Triggered ${dagId}`, { description: `ingest_date ${run.ingestDate}` }),
-      onError: (e) => toast.error('Could not trigger the run', { description: e.message }),
-    })
 
   return (
     <TableRow>
@@ -128,13 +119,14 @@ function JobRow({ summary }: { summary: JobSummary }) {
         <div className="font-mono text-xs">{String(job.sink.params.path ?? '')}</div>
         <div className="text-xs text-muted-foreground">{job.sink.template}</div>
       </TableCell>
-      <TableCell>
-        <RunDots runs={runs} />
-      </TableCell>
       <TableCell className="pr-4">
         <div className="flex items-center justify-end gap-1">
-          <Button variant="outline" size="sm" onClick={runNow} disabled={trigger.isPending}>
-            <PlayIcon /> Run now
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(airflowDagUrl(dagId), '_blank', 'noreferrer')}
+          >
+            <ExternalLinkIcon /> Airflow
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}>
@@ -142,9 +134,6 @@ function JobRow({ summary }: { summary: JobSummary }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => navigate(editUrl)}>Edit</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.open(airflowDagUrl(dagId), '_blank', 'noreferrer')}>
-                Open in Airflow
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => downloadText(`${job.name}.yaml`, jobToYaml(job))}>
                 Export YAML

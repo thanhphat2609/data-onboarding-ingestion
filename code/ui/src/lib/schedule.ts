@@ -7,7 +7,7 @@ export interface SchedulePreset {
 }
 
 export const SCHEDULE_PRESETS: SchedulePreset[] = [
-  { id: 'manual', label: 'Manual', description: 'Only "Run now" and backfills', frequency: 'manual' },
+  { id: 'manual', label: 'Manual', description: 'Only triggered in Airflow, and backfills', frequency: 'manual' },
   { id: 'hourly', label: 'Hourly', description: 'At minute 0 of every hour', cron: '0 * * * *', frequency: 'hourly' },
   { id: 'daily', label: 'Daily', description: 'Every day at 02:00', cron: '0 2 * * *', frequency: 'daily' },
   { id: 'weekly', label: 'Weekly', description: 'Mondays at 02:00', cron: '0 2 * * 1', frequency: 'weekly' },

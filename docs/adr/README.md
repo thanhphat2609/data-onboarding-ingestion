@@ -21,6 +21,7 @@ Statuses: `Proposed` → `Accepted` | `Rejected`, later optionally `Superseded b
 | [0013](0013-prod-settings-in-github.md) | Every prod setting in GitHub secrets and variables; the Deploy workflow writes the files on the VMs | Proposed |
 | [0014](0014-prod-save-flow.md) | In prod, the UI saves through a pull request; source passwords are set by hand until Key Vault | Proposed |
 | [0015](0015-rest-api-source-via-redpanda.md) | REST API sources: Airflow fetches into Redpanda, Flink reads the run's offset range as a bounded table | Proposed |
+| [0016](0016-airflow-moves-to-orchestration.md) | Airflow moves to data-onboarding-orchestration | Accepted |
 
 ## Template
 

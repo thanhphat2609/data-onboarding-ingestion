@@ -4,9 +4,9 @@
 #   (ADR-0013): the run writes VM 1's .env and sources.env and VM 2's .env from them (render_env.py), checks them with
 #   `docker compose config`, then VM 1, then VM 2: the files replaced, git checkout <sha>, docker compose build
 #   --pull, up -d, prune old images and build cache.
-# - Only pipelines/ changed: synced to VM 1 right after CI passes on main, without a click (git checkout + pool
-#   sync, no rebuild), so a merged job file becomes a DAG on its own (roadmap Phase 6). If code changed too,
-#   nothing happens until the workflow is run.
+# - Only pipelines/ changed: synced to VM 1 right after CI passes on main, without a click (git checkout, no
+#   rebuild), so a merged job file becomes a DAG on its own (roadmap Phase 6). If code changed too, nothing happens
+#   until the workflow is run. Airflow itself is deployed by data-onboarding-orchestration (ADR-0016).
 # Disabled until the repository variable PROD_DEPLOY_ENABLED is "true" (the VMs don't exist yet).
 name: Deploy
 
@@ -136,7 +136,7 @@ jobs:
           docker compose --env-file "$RUNNER_TEMP/vm1/.env" -f $prod/vm1/docker-compose.yml config --quiet
           docker compose --env-file "$RUNNER_TEMP/vm2/.env" -f $prod/vm2/docker-compose.yml config --quiet
       - *ssh-setup
-      # VM 1 first (Airflow, JobManager), then the TaskManagers; a failure on VM 1 stops the rollout.
+      # VM 1 first (JobManager), then the TaskManagers; a failure on VM 1 stops the rollout.
       - name: Deploy VM 1
         env:
           HOST: ${{ secrets.PROD_VM1_HOST }}

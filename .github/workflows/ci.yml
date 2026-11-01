@@ -38,8 +38,6 @@ jobs:
       - name: Pytest (offline, fake API and in-memory landing)
         working-directory: code/control-plane
         run: pytest -q
-      - name: Airflow files compile
-        run: python -m py_compile code/airflow/dags/*.py code/airflow/scripts/*.py
       - name: Validate pipelines/ (connections and jobs)
         # The paths are needed: the installed package can't find the checkout by itself.
         env:

@@ -2,6 +2,7 @@
 
 - Status: Proposed
 - Date: 2026-10-24
+- Amended by: [ADR-0016](0016-airflow-moves-to-orchestration.md) (`local-db` moves to data-onboarding-orchestration)
 - Amends: [architecture §3.4](../architecture.md#34-metadata-db), [ADR-0009](0009-environments.md) (PostgreSQL in the non-prod Compose project)
 
 ## Context

@@ -12,7 +12,7 @@ import httpx
 DAG_PREFIX = "ingest__"
 # Asia/Ho_Chi_Minh has no daylight saving time; a fixed offset avoids needing tzdata on every host.
 PLATFORM_TZ = dt.timezone(dt.timedelta(hours=7), "Asia/Ho_Chi_Minh")
-DEFAULT_MAX_CONCURRENT_RUNS = 2  # same default as code/airflow/scripts/sync_pools.py
+DEFAULT_MAX_CONCURRENT_RUNS = 2  # same default as data-onboarding-orchestration's scripts/sync_pools.py
 
 
 def dag_id(job_name: str) -> str:

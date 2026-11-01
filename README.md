@@ -16,7 +16,6 @@ Self-service ingestion platform built on Apache Flink. The DE team onboards a so
 code/                     everything the platform team writes and deploys
   ui/                     Web UI (React)
   control-plane/          shared library, Ingestion API (FastAPI), ingestctl CLI
-  airflow/                DAG factory; mounted on Airflow at dags/ingestion/
   runner/                 generic Flink job (PyFlink)
   templates/              versioned source and sink templates, JSON Schemas
     sources/  sinks/  runtime/  schemas/
@@ -33,7 +32,7 @@ Details and reasons: [architecture §12](docs/architecture.md#12-repository-layo
 
 ## Getting started
 
-Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod stack starts by itself: Web UI on port 3000, Airflow on 8080, Flink on 8081. See [infrastructure/README.md](infrastructure/README.md) to run it elsewhere.
+Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod stack starts by itself: Web UI on port 3000, Flink on 8081. Airflow is in [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration): a Codespace of that repository starts both stacks, with Airflow on 8080. See [infrastructure/README.md](infrastructure/README.md) to run it elsewhere.
 
 `pipelines/` starts empty, as in a new prod. To demo the platform, start the example sources and onboard one step by step (connection → job → DAG → run): [infrastructure/non-prod/example-sources/README.md](infrastructure/non-prod/example-sources/README.md).
 
@@ -45,7 +44,7 @@ Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod 
 | [Roadmap](docs/roadmap.md) | Phases, checklists, exit criteria, open questions |
 | [Configuration spec](docs/configuration-spec.md) | `SourceTemplate`, `SinkTemplate`, `Connection`, `IngestionJob` |
 | [ADRs](docs/adr/README.md) | Architecture decisions and their trade-offs |
-| [PostgreSQL](docs/postgresql.md) | The `airflow` and `platform` databases: how to connect and check every table |
+| [PostgreSQL](https://github.com/thanhphat2609/data-onboarding-orchestration/blob/main/docs/postgresql.md) | The `airflow` and `platform` databases: how to connect and check every table |
 | [Contributing](CONTRIBUTING.md) | Conventions for this repository |
 
 ## Scope (v1)
@@ -54,5 +53,5 @@ Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod 
 - Destination: Azure Data Lake Storage Gen2
 - Formats: Parquet, Delta Lake
 - Execution: Apache Flink 1.20 in batch mode on a standalone session cluster (JobManager on VM 1, TaskManagers on VM 2)
-- Orchestration: Apache Airflow, one DAG `ingest__<name>` per job file; on-demand runs from the UI or CLI
+- Orchestration: Apache Airflow in [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration), one DAG `ingest__<name>` per job file; on-demand runs from the UI or CLI
 - Environments: non-prod on GitHub Codespaces (one Docker Compose project), prod on two VMs; container definitions in `infrastructure/`

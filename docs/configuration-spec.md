@@ -389,7 +389,7 @@ tags: [crm, daily]
 
 ### Run request
 
-"Run now" in the UI, `POST /jobs/{name}/runs` or `ingestctl run <name>`. All of them trigger the DAG `ingest__<name>` through the Airflow REST API and pass the fields below as DAG run `conf`:
+"Trigger DAG" in the Airflow UI or `ingestctl run <name>` (the Web UI has no Run now since ADR-0017). Both trigger the DAG `ingest__<name>` through the Airflow REST API and pass the fields below as DAG run `conf`:
 
 | Field | Default | Description |
 |---|---|---|

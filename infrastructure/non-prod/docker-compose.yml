@@ -6,8 +6,8 @@
 # The test sources (SQL Server, PostgreSQL, MySQL, a REST API) are a separate project, started by hand for a demo:
 # example-sources/ (README.md there). Like the company's real systems, they are not part of the platform.
 #
-# Airflow is in data-onboarding-orchestration (ADR-0016): its stack starts after this one, mounts this checkout
-# read-only and reaches Flink, Redpanda and the API over the Docker network `data-platform`.
+# Airflow is in data-onboarding-orchestration (ADR-0016): its stack starts after this one and reaches Flink and
+# Redpanda over the Docker network `data-platform`. Saving in the Web UI opens a pull request there (ADR-0017).
 
 name: ingestion-nonprod
 
@@ -27,7 +27,8 @@ services:
     mem_limit: 64m
     restart: unless-stopped
 
-  # Ingestion API (code/control-plane): reads and writes pipelines/, tests sources, triggers DAGs in Airflow.
+  # Ingestion API (code/control-plane): validates and renders connections and jobs, tests sources, opens the pull
+  # request on the orchestration repository. Its pipelines/ is a working copy, not what Airflow reads.
   api:
     build:
       context: ../..
@@ -36,13 +37,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      AIRFLOW_API_URL: http://airflow:8080
+      # pull_request: every save also opens a pull request on the orchestration repository; disk: working copy only.
+      SAVE_MODE: ${SAVE_MODE:-pull_request}
+      GITHUB_TOKEN: ${ORCHESTRATION_GITHUB_TOKEN:-}
+      ORCHESTRATION_REPOSITORY: ${ORCHESTRATION_REPOSITORY:-thanhphat2609/data-onboarding-orchestration}
+      ORCHESTRATION_BASE_BRANCH: ${ORCHESTRATION_BASE_BRANCH:-main}
     # Values of env://<VAR> references, for "Test connection" and the preview (prod: vm1/sources.env).
     env_file:
       - path: sources.env
         required: false
     volumes:
-      # The same files Airflow mounts from this checkout: a saved job becomes a DAG without a restart (ADR-0008).
+      # Working copy of what was saved (git-ignored): the job wizard lists its connections from here before the merge.
       - ../../pipelines:/workspace/pipelines
       - ../../code/templates:/workspace/code/templates:ro
     networks: [default, platform, sources]

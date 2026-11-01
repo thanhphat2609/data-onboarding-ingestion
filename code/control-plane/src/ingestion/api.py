@@ -1,15 +1,15 @@
 """Ingestion API (FastAPI): the HTTP layer the Web UI calls, at ``/api``.
 
 Responses follow ``code/ui/src/api/types.ts``. Errors are ``{"detail": "<message>"}`` with 404 (not found),
-409 (already exists), 422 (invalid input, ``errors`` lists each problem) or 502 (Airflow unavailable).
+409 (already exists), 422 (invalid input, ``errors`` lists each problem) or 502 (GitHub unavailable).
+With ``SAVE_MODE=pull_request`` a saved connection or job also opens a pull request on the orchestration repository
+(ADR-0017); the response then carries ``pullRequest``.
 Run: ``uvicorn ingestion.api:create_app --factory --host 0.0.0.0 --port 8000``
 """
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from typing import Annotated, Any
 
@@ -17,15 +17,13 @@ from fastapi import Body, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ingestion.airflow import AirflowClient, AirflowError, DagNotFound, RunSummary, dag_id
+from ingestion.github import GitHubError, PullRequest, PullRequestPublisher
 from ingestion.settings import Settings
 from ingestion.sources import SourceClient, SourceError, client_for
 from ingestion.specs import InvalidSpec, validate_connection
 from ingestion.sql import check_sql
-from ingestion.store import ConfigStore, Conflict, NotFound
+from ingestion.store import ConfigStore, Conflict, NotFound, Publish
 from ingestion.templates import Template, TemplateNotFound, TemplateRegistry
-
-log = logging.getLogger("ingestion.api")
 
 Document = dict[str, Any]
 
@@ -35,30 +33,23 @@ class SqlRequest(BaseModel):
     query: str
 
 
-class RunRequest(BaseModel):
-    ingestDate: str | None = None  # noqa: N815 - JSON field name used by the Web UI
-
-
-def _run_json(run: RunSummary) -> Document:
-    return {
-        "runId": run.run_id,
-        "dagId": run.dag_id,
-        "ingestDate": run.ingest_date,
-        "state": run.state,
-        "startedAt": run.started_at,
-        "trigger": run.trigger,
-    }
+def dag_id(job_name: str) -> str:
+    """The DAG that the orchestration repository's factory builds for a job; the Web UI only links to it."""
+    return f"ingest__{job_name}"
 
 
 def create_app(
     settings: Settings | None = None,
-    airflow: AirflowClient | None = None,
+    publisher: PullRequestPublisher | None = None,
     source_factory: Callable[[Document, Template], SourceClient] = client_for,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     registry = TemplateRegistry(settings.templates_dir)
     store = ConfigStore(settings, registry)
-    airflow = airflow or AirflowClient(settings.airflow_url, settings.airflow_username, settings.airflow_password)
+    if settings.save_mode == "pull_request" and publisher is None:
+        if not settings.github_token:
+            raise RuntimeError("SAVE_MODE=pull_request needs GITHUB_TOKEN (Contents and Pull requests, read and write)")
+        publisher = PullRequestPublisher(settings.github_token, settings.github_repository, settings.github_base_branch)
     app = FastAPI(title="Ingestion API", version="0.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
     @app.exception_handler(InvalidSpec)
@@ -78,12 +69,8 @@ def create_app(
     def source_error(_: Request, error: SourceError) -> JSONResponse:
         return JSONResponse({"detail": str(error)}, status_code=422)
 
-    @app.exception_handler(DagNotFound)
-    def dag_not_found(_: Request, error: DagNotFound) -> JSONResponse:
-        return JSONResponse({"detail": str(error)}, status_code=409)
-
-    @app.exception_handler(AirflowError)
-    def airflow_error(_: Request, error: AirflowError) -> JSONResponse:
+    @app.exception_handler(GitHubError)
+    def github_error(_: Request, error: GitHubError) -> JSONResponse:
         return JSONResponse({"detail": str(error)}, status_code=502)
 
     def require_name(path_name: str, document: Document) -> None:
@@ -104,6 +91,35 @@ def create_app(
     def schema(name: str) -> Document:
         return registry.schema(name)
 
+    # --- saving: a file in pipelines/, plus a pull request in pull_request mode -----------------------
+
+    def publication(kind: str, name: str, owner: object, is_new: bool) -> tuple[Publish | None, list[PullRequest]]:
+        """The store calls it with the validated file; it opens the pull request before the file is written."""
+        opened: list[PullRequest] = []
+        if publisher is None:
+            return None, opened
+
+        def publish(relative_path: str, text: str) -> None:
+            action = "add" if is_new else "update"
+            opened.append(
+                publisher.open(
+                    path=f"{settings.repository_pipelines_path}/{relative_path}",
+                    content=text,
+                    title=f"feat(ingestion): {action} {kind} {name}",
+                    body=f"{action.capitalize()} {kind} `{name}` (owner: {owner}), saved in the Ingestion Web UI.\n\n"
+                    "CI validates the file against the schemas; merging puts it in front of Airflow.",
+                    branch_prefix=f"ui/{kind}-{name}",
+                )
+            )
+
+        return publish, opened
+
+    def with_pull_request(saved: Document, opened: list[PullRequest]) -> Document:
+        if not opened:
+            return saved
+        pull = opened[0]
+        return {**saved, "pullRequest": {"number": pull.number, "url": pull.url, "branch": pull.branch}}
+
     # --- connections ---------------------------------------------------------------------------------
 
     @app.get("/api/connections")
@@ -115,13 +131,8 @@ def create_app(
         return store.get_connection(name)
 
     def save_connection(connection: Document, is_new: bool) -> Document:
-        saved = store.save_connection(connection, is_new)
-        try:
-            airflow.upsert_pool(saved)
-        except AirflowError as error:
-            # The file is saved; Airflow also creates pools from the files on its next start.
-            log.warning("Connection %s saved, pool not updated: %s", saved["name"], error)
-        return saved
+        publish, opened = publication("connection", str(connection.get("name")), connection.get("owner"), is_new)
+        return with_pull_request(store.save_connection(connection, is_new, publish), opened)
 
     @app.post("/api/connections", status_code=201)
     def create_connection(connection: Annotated[Document, Body()]) -> Document:
@@ -140,40 +151,28 @@ def create_app(
         result = source_factory(connection, registry.source(connection["template"])).test()
         return {"ok": result.ok, "message": result.message, "latencyMs": result.latency_ms}
 
-    # --- jobs and runs -------------------------------------------------------------------------------
+    # --- jobs ----------------------------------------------------------------------------------------
 
     @app.get("/api/jobs")
     def list_jobs() -> list[Document]:
-        jobs = store.list_jobs()
-
-        def runs(job: Document) -> list[Document]:
-            try:
-                return [_run_json(r) for r in airflow.latest_runs(dag_id(job["name"]))]
-            except AirflowError as error:
-                log.warning("Runs of %s unavailable: %s", job["name"], error)
-                return []
-
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            all_runs = list(pool.map(runs, jobs))
-        return [{"job": job, "dagId": dag_id(job["name"]), "runs": r} for job, r in zip(jobs, all_runs, strict=True)]
+        return [{"job": job, "dagId": dag_id(job["name"])} for job in store.list_jobs()]
 
     @app.get("/api/jobs/{name}")
     def get_job(name: str) -> Document:
         return store.get_job(name)
 
+    def save_job(job: Document, is_new: bool) -> Document:
+        publish, opened = publication("job", str(job.get("name")), job.get("owner"), is_new)
+        return with_pull_request(store.save_job(job, is_new, publish), opened)
+
     @app.post("/api/jobs", status_code=201)
     def create_job(job: Annotated[Document, Body()]) -> Document:
-        return store.save_job(job, is_new=True)
+        return save_job(job, is_new=True)
 
     @app.put("/api/jobs/{name}")
     def update_job(name: str, job: Annotated[Document, Body()]) -> Document:
         require_name(name, job)
-        return store.save_job(job, is_new=False)
-
-    @app.post("/api/jobs/{name}/runs", status_code=201)
-    def trigger_run(name: str, request: RunRequest | None = None) -> Document:
-        store.get_job(name)
-        return _run_json(airflow.trigger(dag_id(name), request.ingestDate if request else None))
+        return save_job(job, is_new=False)
 
     @app.get("/api/invalid-files")
     def invalid_files() -> list[Document]:

@@ -60,7 +60,8 @@ BEGIN
 END
 GO
 
--- Empty here; seed-large.sh fills it with ~10M rows for the Phase 2 throughput tests.
+-- 5,000 orders for demos (a second table to ingest from the same connection); seed-large.sh refills it with ~10M
+-- rows for the Phase 2 throughput tests.
 IF OBJECT_ID('dbo.orders') IS NULL
 CREATE TABLE dbo.orders (
   order_id    BIGINT        NOT NULL PRIMARY KEY,
@@ -69,6 +70,17 @@ CREATE TABLE dbo.orders (
   status      VARCHAR(20)   NOT NULL,
   created_at  DATETIME2(3)  NOT NULL
 );
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.orders)
+INSERT INTO dbo.orders (order_id, customer_id, amount, status, created_at)
+SELECT i, i % 10000 + 1, (i % 100000) / 100.0,
+       CHOOSE(i % 4 + 1, 'new', 'paid', 'shipped', 'cancelled'),
+       DATEADD(MINUTE, -i * 3, SYSUTCDATETIME())
+FROM (
+  SELECT TOP (5000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS i
+  FROM sys.all_objects AS a CROSS JOIN sys.all_objects AS b
+) AS n;
 GO
 
 PRINT 'crm sample database is ready';

@@ -19,7 +19,7 @@ code/                     everything the platform team writes and deploys
   runner/                 generic Flink job (PyFlink)
   templates/              versioned source and sink templates, JSON Schemas
     sources/  sinks/  runtime/  schemas/
-pipelines/                YAML owned by users and the DE team, one file per object
+pipelines/                git-ignored working copy of what the Web UI saved; the real files are in data-onboarding-orchestration (ADR-0017)
   connections/            onboarded sources (connections/<name>.yaml)
   jobs/                   ingestion jobs; jobs/<name>.yaml becomes DAG ingest__<name>
 infrastructure/           Dockerfiles and Docker Compose per environment
@@ -34,7 +34,7 @@ Details and reasons: [architecture §12](docs/architecture.md#12-repository-layo
 
 Open the repository in GitHub Codespaces (4-core / 16 GB machine). The non-prod stack starts by itself: Web UI on port 3000, Flink on 8081. Airflow is in [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration): a Codespace of that repository starts both stacks, with Airflow on 8080. See [infrastructure/README.md](infrastructure/README.md) to run it elsewhere.
 
-`pipelines/` starts empty, as in a new prod. To demo the platform, start the example sources and onboard one step by step (connection → job → DAG → run): [infrastructure/non-prod/example-sources/README.md](infrastructure/non-prod/example-sources/README.md).
+The repository has no example connections or jobs. To demo the platform, start the example sources and create a connection and a job by hand in the Web UI; each save opens a pull request on data-onboarding-orchestration, and after the merge the job becomes a DAG there: [infrastructure/non-prod/example-sources/README.md](infrastructure/non-prod/example-sources/README.md).
 
 ## Documentation
 

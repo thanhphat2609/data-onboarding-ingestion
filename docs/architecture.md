@@ -57,7 +57,7 @@ React, Vite, TypeScript and shadcn/ui (Base UI), with a CodeMirror 6 editor for 
 |---|---|
 | **Connections** | List of connections; "New connection" form; "Test connection" |
 | **New job** | Wizard: Source (connection, SQL editor, validation, preview) → Sink → Schedule → Review (form and live YAML side by side) → Save or Export YAML |
-| **Jobs** | Latest runs, "Run now", links to the job's Airflow DAG and the Flink web UI, invalid files flagged |
+| **Jobs** | The saved jobs, a link to each job's Airflow DAG and the Flink web UI, invalid files flagged. Runs and history are watched in Airflow ([ADR-0017](adr/0017-ui-opens-pull-requests-on-orchestration.md)) |
 
 Forms are generated from the parameter declarations of each template by a small renderer in the UI, so a new template appears without frontend changes. The UI holds no business logic; it calls the Ingestion API. Until the API exists it runs against an in-browser mock with the same interface.
 
@@ -73,12 +73,12 @@ Python 3.12 / FastAPI. Business logic lives in a shared library in `code/control
 |---|---|
 | **Template registry** | Loads `code/templates/**`, keeps every version, exposes JSON Schemas |
 | **Spec / SQL validator** | Validates YAML against JSON Schema; parses and checks user SQL with `sqlglot` ([ADR-0005](adr/0005-free-form-sql.md)) |
-| **Config store** | Reads and writes `pipelines/connections/<name>.yaml` and `pipelines/jobs/<name>.yaml`; enforces file name = `name` and immutable names |
+| **Config store** | Reads and writes the working copy `pipelines/connections/<name>.yaml` and `pipelines/jobs/<name>.yaml` (git-ignored; the real files are in the orchestration repository); enforces file name = `name` and immutable names |
 | **Preview / preflight** | Preview, schema introspection, partition bounds and `COUNT(*)` against the source |
 | **Renderer** | Jinja2: template + connection + job + preflight results → resolved job spec and Flink submission request |
 | **Flink client** | Starts the PyFlink runner, polls and cancels jobs through the Flink REST API |
 | **Publisher** | Verifies row counts and atomically publishes staged output ([ADR-0004](adr/0004-lake-layout-and-delta-commit.md)) |
-| **Airflow client** | Triggers DAG runs ("Run now") and reads run status through the Airflow REST API |
+| **Pull request publisher** | Opens a pull request on data-onboarding-orchestration with the saved file through the GitHub REST API ([ADR-0017](adr/0017-ui-opens-pull-requests-on-orchestration.md)). The API has no Airflow client |
 
 `ingestctl` wraps the same library (`validate`, `preflight`, `render`, `submit`, `run`, `status`) so the DE team can work entirely from Git.
 
@@ -271,10 +271,10 @@ Adding S3 or GCS later means adding a sink template (URI scheme plus filesystem 
 
 Details: [ADR-0008](adr/0008-airflow-dag-per-job.md).
 
-- Every job file `pipelines/jobs/<name>.yaml` becomes the DAG `ingest__<name>`; its `schedule` field becomes the DAG schedule. Without `schedule`, the job only runs on demand.
-- On-demand runs ("Run now" in the UI, `ingestctl run <name>`) trigger the same DAG through the Airflow REST API with an optional `ingest_date` (default: the logical date in `Asia/Ho_Chi_Minh`), which also enables backfills.
+- Every job file `pipelines/jobs/<name>.yaml` of the orchestration repository ([ADR-0017](adr/0017-ui-opens-pull-requests-on-orchestration.md)) becomes the DAG `ingest__<name>`; its `schedule` field becomes the DAG schedule. Without `schedule`, the job only runs on demand.
+- On-demand runs (the Airflow UI, `ingestctl run <name>`) trigger the same DAG through the Airflow REST API with an optional `ingest_date` (default: the logical date in `Asia/Ho_Chi_Minh`), which also enables backfills.
 - Downstream pipelines schedule on the Asset of a published table instead of a time or a DAG name.
-- New and changed job files are picked up when the DAG processor re-parses the factory, without restarting Airflow. In non-prod `pipelines/jobs/` is a shared volume; in prod CI/CD syncs `pipelines/jobs/` and `pipelines/connections/` to VM 1 automatically (Phase 6).
+- New and changed job files are picked up when the DAG processor re-parses the factory, without restarting Airflow. The Web UI opens a pull request there for every save and the merge is what Airflow sees; the prod sync described in ADR-0012 is reworked for this in (Phase 6).
 
 ## 10. Deployment topology
 

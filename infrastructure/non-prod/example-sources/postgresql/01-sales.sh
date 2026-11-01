@@ -1,7 +1,7 @@
 #!/bin/sh
 # Test source for Phase 2. Runs once, on the first start of an empty volume.
-# Same model as the SQL Server sample (crm): segments, 10,000 customers, and an empty orders table that
-# seed-large.sh fills with ~10M rows for throughput tests.
+# Same model as the SQL Server sample (crm): segments, 10,000 customers and 5,000 orders (two tables to ingest from
+# one connection in a demo); seed-large.sh refills orders with ~10M rows for throughput tests.
 set -eu
 
 psql -v ON_ERROR_STOP=1 --username postgres --dbname sales <<EOSQL
@@ -34,6 +34,12 @@ INSERT INTO customers
 SELECT i, 'Customer ' || i, 'customer' || i || '@example.com', i % 3 + 1, i % 50 = 0,
        now() - make_interval(mins => i * 7), now() - make_interval(mins => i)
 FROM generate_series(1, 10000) AS i;
+
+INSERT INTO orders
+SELECT i, i % 10000 + 1, (i % 100000) / 100.0,
+       (ARRAY['new', 'paid', 'shipped', 'cancelled'])[i % 4 + 1],
+       now() - make_interval(mins => i * 3)
+FROM generate_series(1, 5000) AS i;
 
 -- Dedicated read-only role, as every connection requires (architecture §3.7).
 CREATE ROLE svc_ingest_ro LOGIN PASSWORD '${RO_PASSWORD}';

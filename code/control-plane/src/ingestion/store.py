@@ -1,13 +1,15 @@
 """Config store: ``pipelines/connections/<name>.yaml`` and ``pipelines/jobs/<name>.yaml`` are the only storage.
 
-The file name equals ``name``, names never change, and every write is validated first and replaces the file
-atomically, so the Airflow DAG processor never reads a half-written file.
+Here ``pipelines/`` is the Web UI's working copy; the files Airflow runs live in data-onboarding-orchestration and
+reach it by pull request (ADR-0017). The file name equals ``name``, names never change, and every write is
+validated first and replaces the file atomically.
 """
 
 from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,9 @@ import yaml
 from ingestion.settings import Settings
 from ingestion.specs import InvalidSpec, validate_connection, validate_job
 from ingestion.templates import TemplateRegistry
+
+# Called with a file's path relative to pipelines/ and its text, after validation and before the write; it may raise.
+Publish = Callable[[str, str], None]
 
 # Key order in written files, matching docs/configuration-spec.md.
 _CONNECTION_KEYS = ["kind", "name", "template", "owner", "params", "limits", "access"]
@@ -141,7 +146,15 @@ class ConfigStore:
 
     # --- writing ---------------------------------------------------------------------------------
 
-    def _save(self, directory: Path, document: dict[str, Any], is_new: bool, kind: str, keys: list[str]) -> None:
+    def _save(
+        self,
+        directory: Path,
+        document: dict[str, Any],
+        is_new: bool,
+        kind: str,
+        keys: list[str],
+        publish: Publish | None,
+    ) -> None:
         name = document["name"]
         path = directory / f"{name}.yaml"
         with self._lock:
@@ -149,15 +162,21 @@ class ConfigStore:
                 raise Conflict(f"pipelines/{directory.name}/{path.name} already exists")
             if not is_new and not path.exists():
                 raise NotFound(f'{kind} "{name}" not found; names can\'t be changed after creation')
+            text = to_yaml(document, keys)
+            if publish:
+                # Before the write: when the pull request can't be opened, nothing is saved.
+                publish(f"{directory.name}/{path.name}", text)
             directory.mkdir(parents=True, exist_ok=True)
-            _write_atomic(path, to_yaml(document, keys))
+            _write_atomic(path, text)
 
-    def save_connection(self, connection: dict[str, Any], is_new: bool) -> dict[str, Any]:
+    def save_connection(
+        self, connection: dict[str, Any], is_new: bool, publish: Publish | None = None
+    ) -> dict[str, Any]:
         validate_connection(connection, self.registry)
-        self._save(self.settings.connections_dir, connection, is_new, "Connection", _CONNECTION_KEYS)
+        self._save(self.settings.connections_dir, connection, is_new, "Connection", _CONNECTION_KEYS, publish)
         return self.get_connection(connection["name"])
 
-    def save_job(self, job: dict[str, Any], is_new: bool) -> dict[str, Any]:
+    def save_job(self, job: dict[str, Any], is_new: bool, publish: Publish | None = None) -> dict[str, Any]:
         connection: dict[str, Any] | None = None
         if isinstance(job, dict) and isinstance(job.get("connection"), str):
             try:
@@ -168,5 +187,5 @@ class ConfigStore:
             except InvalidSpec as error:
                 raise InvalidSpec([f"connection {job['connection']} is invalid: {error}"]) from None
         validate_job(job, connection, self.registry)
-        self._save(self.settings.jobs_dir, job, is_new, "Job", _JOB_KEYS)
+        self._save(self.settings.jobs_dir, job, is_new, "Job", _JOB_KEYS, publish)
         return self.get_job(job["name"])

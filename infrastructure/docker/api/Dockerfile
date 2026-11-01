@@ -10,7 +10,7 @@ COPY code/control-plane/pyproject.toml code/control-plane/
 COPY code/control-plane/src/ code/control-plane/src/
 RUN pip install ./code/control-plane && rm -rf code
 
-# uid 1000 = the Codespaces user, so YAML files written to the bind-mounted pipelines/ stay editable in the repo.
+# uid 1000 = the Codespaces user, so the YAML working copy written to the bind-mounted pipelines/ stays editable.
 RUN useradd --uid 1000 --create-home ingestion
 USER ingestion
 

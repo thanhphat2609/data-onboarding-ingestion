@@ -14,9 +14,9 @@ vm1/.env.example, vm1/sources.env.example, vm2/.env.example   every prod setting
 
 | Stage | Trigger | What runs |
 |---|---|---|
-| 1. CI | Pull request or push to `main` | Ruff, mypy, YAML file validation, UI typecheck/lint/build, Compose files, every image built (not pushed) |
+| 1. CI | Pull request or push to `main` | Ruff, mypy, pytest, UI typecheck/lint/build, Compose files, every image built (not pushed) |
 | 2a. Deploy (approval) | Someone runs **Actions → Deploy → Run workflow** on `main` | Checks the commit is on `main` with a green CI run; writes VM 1's `.env` and `sources.env` and VM 2's `.env` from the secrets and variables and checks them with `docker compose config`; then VM 1 and VM 2: the files replaced, `git checkout <sha>`, `docker compose build --pull`, `up -d --wait`, prune images and week-old build cache |
-| 2b. Pipelines sync | CI green on a push to `main` that changed only `pipelines/` | VM 1: `git checkout <sha>`, no rebuild; Airflow mounts the checkout and picks up the files and pools by itself |
+Job and connection files are not deployed from here: they are merged in data-onboarding-orchestration, which syncs them to VM 1 itself ([ADR-0017](../../docs/adr/0017-ui-opens-pull-requests-on-orchestration.md)).
 
 Separate from the stages: `.github/workflows/delete-merged-branch.yml` deletes a pull request's branch once it is merged. Run it by hand once (Actions → Delete merged branches → Run workflow) for branches merged before it existed.
 
@@ -30,7 +30,7 @@ The build reuses the Docker layer cache (rebuilding PyFlink every time takes min
 
 A setting you can't fill in yet (e.g. the Flink addresses before the VMs exist): set it to **`TODO`**. The deploy stops while any secret or variable of this repository is still `TODO`, naming each one, so a placeholder never reaches a VM. Don't use another placeholder such as `1`: it would be deployed as a real value.
 
-Secrets and variables are per repository: set them here, in data-onboarding-agent **and** in data-onboarding-orchestration. All three can use the same SSH key and deploy user. One value is shared: this repository's `AIRFLOW_ADMIN_PASSWORD` secret = the orchestration repository's `AIRFLOW_ADMIN_PASSWORD` secret.
+Secrets and variables are per repository: set them here, in data-onboarding-agent **and** in data-onboarding-orchestration. All three can use the same SSH key and deploy user. The `PROD_SSH_*` and `PROD_VM1_HOST` secrets repeat in each repository with the same values.
 
 ### Secrets (Settings → Secrets and variables → Actions → New repository secret)
 
@@ -46,7 +46,7 @@ App settings (written into the files on the VMs):
 
 | Name | Required | What it is |
 |---|---|---|
-| `AIRFLOW_ADMIN_PASSWORD` | yes | Airflow login `admin`, which the Ingestion API uses; same value as in data-onboarding-orchestration |
+| `ORCHESTRATION_GITHUB_TOKEN` | yes | Fine-grained token limited to data-onboarding-orchestration, Contents and Pull requests (read and write): the Ingestion API opens a pull request there for every save. Create it under your GitHub account → Settings → Developer settings; renew it before it expires |
 | `CRM_SQLSERVER_RO_PASSWORD`, `SALES_POSTGRES_RO_PASSWORD`, `SHOP_MYSQL_RO_PASSWORD` | yes | Source passwords for `env://` references (`vm1/sources.env`). Every key of [vm1/sources.env.example](vm1/sources.env.example) is required: a new connection with a new `env://` reference adds a line there and a secret here |
 
 ### Variables (same page → Variables tab → New repository variable)
@@ -58,15 +58,16 @@ App settings (written into the files on the VMs):
 | `PROD_SSH_PORT` | `22` | SSH port of the VMs (default `22`) |
 | `FLINK_JOBMANAGER_ADDRESS` | `10.0.0.4` | **Required.** Private address of VM 1 as seen from VM 2 (used on both VMs) |
 | `FLINK_TASKMANAGER_ADDRESS` | `10.0.0.5` | **Required.** Private address of VM 2 as seen from VM 1 |
+| `ORCHESTRATION_REPOSITORY`, `ORCHESTRATION_BASE_BRANCH` | | Optional; empty = `thanhphat2609/data-onboarding-orchestration` and `main` |
 | `UI_PORT`, `AIRFLOW_PUBLIC_URL`, `FLINK_PUBLIC_URL`, `JOBMANAGER_MEMORY`, `TASKMANAGER_SLOTS`, `TASKMANAGER_MEMORY` | | Optional; empty = the default in the Compose files |
 
 Variables are not secret: they show in the logs. Anything secret goes in Secrets.
 
 ### Branch protection (Settings → Rules → Rulesets, or Branches)
 
-For `main`: require a pull request before merging, and require the status checks `Python (lint, types, YAML files)`, `Web UI (types, lint, build)` and `Compose files and image builds`.
+For `main`: require a pull request before merging, and require the status checks `Python (lint, types, tests)`, `Web UI (types, lint, build)` and `Compose files and image builds`.
 
-Application secrets (source passwords, the Airflow login) are GitHub secrets until Key Vault (`kv://`, Phase 6) replaces the source passwords. Don't edit `.env` or `sources.env` on a VM: the next deploy replaces them (mode `600`, ignored by Git).
+Application secrets (source passwords, the orchestration token) are GitHub secrets until Key Vault (`kv://`, Phase 6) replaces the source passwords. Don't edit `.env` or `sources.env` on a VM: the next deploy replaces them (mode `600`, ignored by Git).
 
 ## VM setup (once per VM)
 
@@ -80,7 +81,7 @@ If the VMs can't accept SSH from the internet, run a self-hosted GitHub runner o
 
 ## Open points (Phase 6)
 
-- The Web UI writes job files on VM 1 without a commit until [ADR-0014](../../docs/adr/0014-prod-save-flow.md) (proposed: a pull request per save) is built. `deploy.sh` stops when the checkout has uncommitted changes, so nothing is overwritten.
+- The Web UI opens a pull request per save ([ADR-0017](../../docs/adr/0017-ui-opens-pull-requests-on-orchestration.md)); verify it on VM 1 once the VMs exist.
 - **New connection with a new password** (ADR-0014): its pull request adds `NAME=` to `vm1/sources.env.example`; add the secret `NAME` here, merge, then run **Actions → Deploy** once. Until Key Vault (`kv://`) replaces this step.
 - TLS and Entra ID SSO in front of the UI; Airflow keeps one admin user until then.
 - ADLS identity for the TaskManagers and `kv://` secrets.

@@ -26,11 +26,18 @@ services:
       context: ../../..
       dockerfile: infrastructure/docker/api/Dockerfile
     image: ingestion-api:prod
+    environment:
+      # Every save opens a pull request on the orchestration repository (ADR-0017).
+      SAVE_MODE: pull_request
+      GITHUB_TOKEN: ${ORCHESTRATION_GITHUB_TOKEN:?}
+      ORCHESTRATION_REPOSITORY: ${ORCHESTRATION_REPOSITORY:-thanhphat2609/data-onboarding-orchestration}
+      ORCHESTRATION_BASE_BRANCH: ${ORCHESTRATION_BASE_BRANCH:-main}
     env_file:
       - path: sources.env
         required: false
     volumes:
-      - ../../../pipelines:/workspace/pipelines
+      # Working copy of what was saved; the files Airflow runs are in data-onboarding-orchestration.
+      - api-pipelines:/workspace/pipelines
       - ../../../code/templates:/workspace/code/templates:ro
     networks: [default, platform]
     mem_limit: 512m
@@ -108,6 +115,7 @@ networks:
 
 volumes:
   redpanda-data:
+  api-pipelines:
   # Airflow mounts these two by name.
   runs:
     name: ingestion-runs

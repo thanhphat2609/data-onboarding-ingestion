@@ -4,17 +4,12 @@
 #   (ADR-0013): the run writes VM 1's .env and sources.env and VM 2's .env from them (render_env.py), checks them with
 #   `docker compose config`, then VM 1, then VM 2: the files replaced, git checkout <sha>, docker compose build
 #   --pull, up -d, prune old images and build cache.
-# - Only pipelines/ changed: synced to VM 1 right after CI passes on main, without a click (git checkout, no
-#   rebuild), so a merged job file becomes a DAG on its own (roadmap Phase 6). If code changed too, nothing happens
-#   until the workflow is run. Airflow itself is deployed by data-onboarding-orchestration (ADR-0016).
+# - Job and connection files are not deployed from here: they are merged in data-onboarding-orchestration, which
+#   syncs them itself (ADR-0017).
 # Disabled until the repository variable PROD_DEPLOY_ENABLED is "true" (the VMs don't exist yet).
 name: Deploy
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       sha:
@@ -40,78 +35,32 @@ env:
 
 jobs:
   plan:
-    if: >-
-      vars.PROD_DEPLOY_ENABLED == 'true' &&
-      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    if: vars.PROD_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.plan.outputs.sha }}
-      scope: ${{ steps.plan.outputs.scope }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - &ssh-setup
-        name: SSH key
-        env:
-          SSH_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
-      - name: Check the commit and compare with VM 1
+      - name: Check the commit
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          HOST: ${{ secrets.PROD_VM1_HOST }}
-          TARGET: ${{ inputs.sha || github.event.workflow_run.head_sha || 'origin/main' }}
-          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+          TARGET: ${{ inputs.sha || 'origin/main' }}
         run: |
           sha=$(git rev-parse "$TARGET")
           if ! git merge-base --is-ancestor "$sha" origin/main; then
             echo "::error::$sha is not on main"; exit 1
           fi
-          if [[ "$MANUAL" == true ]]; then
-            green=$(gh run list --workflow CI --commit "$sha" --status success --json databaseId --jq length)
-            if [[ "$green" == 0 ]]; then
-              echo "::error::No green CI run for $sha; wait for CI or fix it first"; exit 1
-            fi
+          green=$(gh run list --workflow CI --commit "$sha" --status success --json databaseId --jq length)
+          if [[ "$green" == 0 ]]; then
+            echo "::error::No green CI run for $sha; wait for CI or fix it first"; exit 1
           fi
-          deployed=$(ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" "git -C '$REPO_DIR' rev-parse HEAD")
-          changed=$(git diff --name-only "$deployed" "$sha" 2>/dev/null || echo "<unknown commit on VM 1>")
-          printf 'Deployed %s, target %s\nChanged files:\n%s\n' "$deployed" "$sha" "$changed"
-          if [[ "$MANUAL" == true ]]; then
-            scope=full
-          elif [[ -n "$changed" ]] && ! grep -qv '^pipelines/' <<<"$changed"; then
-            scope=pipelines
-          else
-            scope=none
-            [[ -n "$changed" ]] && echo "::notice::Code changed: run the Deploy workflow to deploy $sha"
-          fi
-          echo "Scope: $scope"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "scope=$scope" >> "$GITHUB_OUTPUT"
-
-  pipelines:
-    needs: plan
-    if: needs.plan.outputs.scope == 'pipelines'
-    runs-on: ubuntu-24.04
-    steps:
-      - *ssh-setup
-      - name: Sync pipelines/ on VM 1
-        env:
-          HOST: ${{ secrets.PROD_VM1_HOST }}
-          SHA: ${{ needs.plan.outputs.sha }}
-        run: |
-          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$HOST" \
-            "set -e; cd '$REPO_DIR'; git fetch --prune origin; git show '$SHA:infrastructure/prod/deploy.sh' | bash -s -- vm1 '$SHA' --pipelines-only"
 
   deploy:
     needs: plan
-    if: needs.plan.outputs.scope == 'full'
     runs-on: ubuntu-24.04
     env:
       SHA: ${{ needs.plan.outputs.sha }}
@@ -135,7 +84,15 @@ jobs:
           install -m 600 "$RUNNER_TEMP/vm1/sources.env" $prod/vm1/sources.env   # compose reads it next to the file
           docker compose --env-file "$RUNNER_TEMP/vm1/.env" -f $prod/vm1/docker-compose.yml config --quiet
           docker compose --env-file "$RUNNER_TEMP/vm2/.env" -f $prod/vm2/docker-compose.yml config --quiet
-      - *ssh-setup
+      - name: SSH key
+        env:
+          SSH_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
       # VM 1 first (JobManager), then the TaskManagers; a failure on VM 1 stops the rollout.
       - name: Deploy VM 1
         env:

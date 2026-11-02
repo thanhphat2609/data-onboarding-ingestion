@@ -52,24 +52,33 @@ class SqlCheck:
 
     @property
     def ok(self) -> bool:
+        """True when there is no error; warnings don't block."""
         return not any(issue.severity == "error" for issue in self.issues)
 
     def error(self, message: str) -> None:
+        """Adds an error: the job can't be saved."""
         self.issues.append(SqlIssue("error", message))
 
     def warning(self, message: str) -> None:
+        """Adds a warning: the job can still be saved."""
         self.issues.append(SqlIssue("warning", message))
 
 
 def _sqlglot(dialect: str) -> str:
+    """sqlglot's name for a template's dialect."""
     return _SQLGLOT_DIALECTS.get(dialect, dialect)
 
 
 def _parse(query: str, dialect: str) -> list[exp.Expr]:
+    """The statements of the query, without empty ones."""
     return [statement for statement in sqlglot.parse(query, read=_sqlglot(dialect)) if statement is not None]
 
 
 def check_sql(query: str, dialect: str) -> SqlCheck:
+    """Checks that the query is one read-only statement with named, unique columns (ADR-0005).
+
+    Never raises: problems come back as errors (the job can't be saved) or warnings (it can).
+    """
     result = SqlCheck()
     if not query.strip():
         result.error("Query is empty")

@@ -17,11 +17,13 @@ class InvalidSpec(ValueError):
     """A document that can't be saved or turned into a DAG; ``errors`` are shown to users."""
 
     def __init__(self, errors: list[str]) -> None:
+        """``errors`` are the messages shown to users; the exception text joins them."""
         super().__init__("; ".join(errors))
         self.errors = errors
 
 
 def schema_errors(document: Any, schema: dict[str, Any]) -> list[str]:
+    """One ``path: message`` per JSON Schema violation, in a stable order."""
     validator = Draft7Validator(schema)
     return [
         f"{'/'.join(map(str, error.path)) or '<root>'}: {error.message}"
@@ -30,6 +32,7 @@ def schema_errors(document: Any, schema: dict[str, Any]) -> list[str]:
 
 
 def validate_connection(connection: Any, registry: TemplateRegistry) -> None:
+    """Raises InvalidSpec unless the connection fits its schema and its template's parameters."""
     errors = schema_errors(connection, registry.schema("connection"))
     if errors:
         raise InvalidSpec(errors)

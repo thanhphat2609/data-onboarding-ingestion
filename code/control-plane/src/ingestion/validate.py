@@ -14,6 +14,7 @@ from ingestion.templates import TemplateRegistry
 
 
 def main() -> int:
+    """Validates every connection and job file; prints the invalid ones and returns 1 if there are any."""
     settings = Settings.from_env()
     store = ConfigStore(settings, TemplateRegistry(settings.templates_dir))
     connections, jobs = store.list_connections(), store.list_jobs()

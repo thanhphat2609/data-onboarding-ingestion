@@ -28,13 +28,16 @@ class Template:
 
     @property
     def name(self) -> str:
+        """The template's name, for example ``mysql``."""
         return str(self.body["name"])
 
     @property
     def ref(self) -> str:
+        """``<name>@<version>``, as connections and jobs refer to it."""
         return f"{self.body['name']}@{self.body['version']}"
 
     def params(self, section: str) -> dict[str, dict[str, Any]]:
+        """The parameter definitions of a section, for example ``connection_params``."""
         return dict(self.body.get(section) or {})
 
 
@@ -82,6 +85,7 @@ def validate_params(defs: dict[str, dict[str, Any]], values: dict[str, Any] | No
 
 
 def with_defaults(defs: dict[str, dict[str, Any]], values: dict[str, Any] | None) -> dict[str, Any]:
+    """The values plus the defaults of the parameters they leave out."""
     defaults = {key: spec["default"] for key, spec in defs.items() if "default" in spec}
     return {**defaults, **(values or {})}
 
@@ -90,21 +94,26 @@ class TemplateRegistry:
     """Reads templates on every call: files are small and may change while the API runs."""
 
     def __init__(self, templates_dir: Path) -> None:
+        """A registry over ``templates_dir`` (``code/templates``)."""
         self.templates_dir = templates_dir
 
     def _all(self, kind: str) -> list[Template]:
+        """Every template of a kind, read from the files."""
         return [
             Template(kind, yaml.safe_load(path.read_text(encoding="utf-8")))
             for path in sorted((self.templates_dir / kind).glob("*.yaml"))
         ]
 
     def sources(self) -> list[Template]:
+        """All source templates."""
         return self._all("sources")
 
     def sinks(self) -> list[Template]:
+        """All sink templates."""
         return self._all("sinks")
 
     def get(self, kind: str, ref: str) -> Template:
+        """A template by ``name@version``; TemplateNotFound if the name or the version doesn't exist."""
         name, _, version = ref.partition("@")
         path = self.templates_dir / kind / f"{name}.yaml"
         if not path.exists():
@@ -115,12 +124,15 @@ class TemplateRegistry:
         return template
 
     def source(self, ref: str) -> Template:
+        """A source template by ``name@version``."""
         return self.get("sources", ref)
 
     def sink(self, ref: str) -> Template:
+        """A sink template by ``name@version``."""
         return self.get("sinks", ref)
 
     def schema(self, name: str) -> dict[str, Any]:
+        """A JSON Schema by name (``connection``, ``ingestion-job``)."""
         path = self.templates_dir / "schemas" / f"{name}.schema.json"
         if not path.exists():
             raise TemplateNotFound(f'schema "{name}" not found')

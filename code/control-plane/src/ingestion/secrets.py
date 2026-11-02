@@ -10,6 +10,7 @@ class SecretError(Exception):
 
 
 def resolve(ref: str) -> str:
+    """The value behind an ``env://`` reference; ``kv://`` is prod only (Phase 6). Never log the result."""
     scheme, _, path = ref.partition("://")
     if scheme == "env":
         value = os.environ.get(path)

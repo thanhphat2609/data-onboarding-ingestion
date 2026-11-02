@@ -33,7 +33,7 @@ ADR-0006 deferred Airflow to a late phase and kept run orchestration inside the 
 - `catchup=False` by default; past dates are loaded with an Airflow backfill or a manual run.
 - `ingest_date` is the DAG run's logical date in `Asia/Ho_Chi_Minh`. A manual run can override it with `conf: {"ingest_date": "YYYY-MM-DD"}`.
 
-**Airflow orchestrates the run lifecycle.** Tasks call the shared Python library (`code/control-plane/`): preflight → render → submit to the Flink JobManager → wait → verify → publish. Airflow owns run state, retries and concurrency; each run's details (expected and written rows, output paths, resolved spec, error) are recorded in the platform `runs` table, keyed by DAG id and run id. A retry always restarts the whole run, never a step in the middle.
+**Airflow orchestrates the run lifecycle.** Tasks call the shared Python library (`code/control-plane/`): preflight → render → submit to the Flink JobManager → wait → verify → publish. Airflow owns run state, retries and concurrency; each run's details (expected and written rows, output paths, error) are recorded in the platform `runs` table, keyed by DAG id and run id. A retry always restarts the whole run, never a step in the middle.
 
 **Published tables are Airflow Assets.** The `publish` task of every `ingest__<name>` DAG declares an outlet `Asset(<table root URI>)`, where the URI is rendered from the sink template without the `ingest_date` partition, for example `abfss://raw@<account>.dfs.core.windows.net/delta/crm/dbo/customers`. Downstream pipelines, such as a dbt project in another repository, schedule on that Asset and run when the table is published. The table URI is the only contract between repositories; no repository imports another's code.
 

@@ -34,6 +34,7 @@ Each spike records what was run, the outcome (works / works with changes / fails
 | 10 | Delta commit of Flink-written Parquet with delta-rs; replace one `ingest_date` | | Feeds [ADR-0004](../adr/0004-lake-layout-and-delta-commit.md) |
 | 11 | Parquet timestamps readable by pandas, Spark and Delta readers | | `check_parquet.py` covers pyarrow/pandas |
 | 12 | REST API source: approach compared, ADR written | ✅ ADR written; 🟡 PyFlink run pending | [ADR-0015](../adr/0015-rest-api-source-via-redpanda.md). 2026-10-30, outside the Codespace: `airflow dags test` on Airflow 3.3.2 (`validate → fetch → submit → wait`, a 429 retried); `fetch` → Redpanda v25.3.18 (two runs: offsets [0, 100) and [100, 200)); Flink 1.20.3 SQL client with `flink-sql-connector-kafka` 3.3.0-1.20 read [100, 200) with `scan.bounded.mode: specific-offsets` → Parquet, `FINISHED` in 3.4 s, 100 rows, only that run's records. Redpanda's HTTP proxy can't create topics (and answers 200 with `error_code: 3` for a missing one), so `fetch` uses confluent-kafka. To do in the Codespace: `kafka_to_parquet.py` from PyFlink |
+| 13 | Runner first cut ([code/runner/](../../code/runner/README.md)) on the saved jobs: JDBC metadata through py4j, `(<query>) AS q` with a partitioned scan, Parquet to `_staging/<run_id>/` | | Covers spikes 3-6 through the real code path; written 2026-11-02, not run yet |
 
 ## Throughput (10M rows of `orders`, 4 slots)
 

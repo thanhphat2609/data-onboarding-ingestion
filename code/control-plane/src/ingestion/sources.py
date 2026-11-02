@@ -49,9 +49,13 @@ class Preview:
 
 
 class SourceClient(Protocol):
-    def test(self) -> TestResult: ...
+    def test(self) -> TestResult:
+        """Opens a connection and reports the server and database."""
+        ...
 
-    def preview(self, query: str) -> Preview: ...
+    def preview(self, query: str) -> Preview:
+        """First rows and column types of the query."""
+        ...
 
 
 def json_value(value: Any) -> Any:
@@ -77,6 +81,7 @@ def json_value(value: Any) -> Any:
 
 
 def _password(params: dict[str, Any]) -> str:
+    """The connection's password from its secret reference; SourceError says which variable is missing."""
     try:
         return resolve(str(params["password"]))
     except SecretError as error:
@@ -92,6 +97,7 @@ def _preview_statement(template: Template, query: str) -> tuple[str, str]:
 
 
 def _elapsed_ms(started: float) -> int:
+    """Milliseconds since ``started``, a ``time.monotonic()`` value."""
     return round((time.monotonic() - started) * 1000)
 
 
@@ -114,11 +120,13 @@ def _sqlserver_message(error: Exception) -> str:
 
 class SqlServerClient:
     def __init__(self, params: dict[str, Any], template: Template, connect: Callable[..., Any] = pymssql.connect):
+        """``connect`` is replaced by a fake in tests; the parameters get the template's defaults."""
         self.params = with_defaults(template.params("connection_params"), params)
         self.template = template
         self._connect_fn = connect
 
     def _connect(self) -> Any:
+        """Opens a read-only pymssql connection with timeouts; SourceError with a readable message."""
         p = self.params
         password = _password(p)
         try:
@@ -141,6 +149,7 @@ class SqlServerClient:
             raise SourceError(_sqlserver_message(error)) from None
 
     def test(self) -> TestResult:
+        """Opens a connection and reports the server and database; warns when the login can write."""
         started = time.monotonic()
         try:
             conn = self._connect()
@@ -173,6 +182,7 @@ class SqlServerClient:
         return [{"name": str(name), "type": str(type_name)} for name, type_name, _ in rows] or None
 
     def preview(self, query: str) -> Preview:
+        """First rows of the query; the column types come from the server's describe, without running the query."""
         statement, plain = _preview_statement(self.template, query)
         conn = self._connect()
         try:
@@ -193,6 +203,7 @@ class SqlServerClient:
 
 
 def _postgres_message(error: Exception) -> str:
+    """A one-line message for a psycopg error, with a hint for the common causes."""
     message = " ".join(line.strip() for line in str(error).strip().splitlines()[:2]) or type(error).__name__
     if "password authentication failed" in message:
         return f"{message}. Check the username and the password secret."
@@ -203,11 +214,13 @@ def _postgres_message(error: Exception) -> str:
 
 class PostgresClient:
     def __init__(self, params: dict[str, Any], template: Template, connect: Callable[..., Any] = psycopg.connect):
+        """``connect`` is replaced by a fake in tests; the parameters get the template's defaults."""
         self.params = with_defaults(template.params("connection_params"), params)
         self.template = template
         self._connect_fn = connect
 
     def _connect(self) -> Any:
+        """Opens a psycopg connection with timeouts and the connection's sslmode."""
         p = self.params
         options: dict[str, Any] = {
             "host": str(p["host"]),
@@ -230,6 +243,7 @@ class PostgresClient:
             raise SourceError(_postgres_message(error)) from None
 
     def test(self) -> TestResult:
+        """Opens a connection and reports the server and database; warns when the login can write."""
         started = time.monotonic()
         try:
             conn = self._connect()
@@ -255,6 +269,7 @@ class PostgresClient:
         return TestResult(True, message, _elapsed_ms(started))
 
     def preview(self, query: str) -> Preview:
+        """First rows and column types of the query."""
         statement, _ = _preview_statement(self.template, query)
         conn = self._connect()
         try:
@@ -301,6 +316,7 @@ _MYSQL_TYPES = {
 
 
 def _mysql_type(description: tuple[Any, ...]) -> str:
+    """Type name of a result column, for the preview."""
     _, code, _, _, precision, scale, _ = description
     if code in (FIELD_TYPE.DECIMAL, FIELD_TYPE.NEWDECIMAL):
         # The driver reports the display length; the digits are that minus the sign and the decimal point.
@@ -323,6 +339,7 @@ def _mysql_ssl(mode: str) -> dict[str, Any]:
 
 
 def _mysql_message(error: Exception) -> str:
+    """A one-line message for a PyMySQL error, with a hint for the common causes."""
     code, message = (error.args + (None, None))[:2] if error.args else (None, str(error))
     message = str(message or error)
     if code == 1045:
@@ -334,11 +351,13 @@ def _mysql_message(error: Exception) -> str:
 
 class MySqlClient:
     def __init__(self, params: dict[str, Any], template: Template, connect: Callable[..., Any] = pymysql.connect):
+        """``connect`` is replaced by a fake in tests; the parameters get the template's defaults."""
         self.params = with_defaults(template.params("connection_params"), params)
         self.template = template
         self._connect_fn = connect
 
     def _connect(self) -> Any:
+        """Opens a PyMySQL connection with timeouts; checks that TLS was negotiated when ssl_mode asks."""
         p = self.params
         mode = str(p["ssl_mode"])
         try:
@@ -372,6 +391,7 @@ class MySqlClient:
             raise SourceError(_mysql_message(error)) from None
 
     def test(self) -> TestResult:
+        """Opens a connection and reports the server and database; warns when the login can write."""
         started = time.monotonic()
         try:
             conn = self._connect()
@@ -393,6 +413,7 @@ class MySqlClient:
         return TestResult(True, message, _elapsed_ms(started))
 
     def preview(self, query: str) -> Preview:
+        """First rows and column types of the query."""
         statement, _ = _preview_statement(self.template, query)
         conn = self._connect()
         try:
@@ -415,6 +436,7 @@ _CLIENTS: dict[str, Callable[[dict[str, Any], Template], SourceClient]] = {
 
 
 def client_for(connection: dict[str, Any], template: Template) -> SourceClient:
+    """The client of the connection's source type; SourceError when the type has none yet."""
     client = _CLIENTS.get(template.name)
     if client is None:
         raise SourceError(f"Live access to {template.ref} sources is not available yet")

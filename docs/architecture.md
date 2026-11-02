@@ -75,7 +75,7 @@ Python 3.12 / FastAPI. Business logic lives in a shared library in `code/control
 | **Spec / SQL validator** | Validates YAML against JSON Schema; parses and checks user SQL with `sqlglot` ([ADR-0005](adr/0005-free-form-sql.md)) |
 | **Config store** | Reads and writes the working copy `pipelines/connections/<name>.yaml` and `pipelines/jobs/<name>.yaml` (git-ignored; the real files are in the orchestration repository); enforces file name = `name` and immutable names |
 | **Preview / preflight** | Preview, schema introspection, partition bounds and `COUNT(*)` against the source |
-| **Renderer** | Jinja2: template + connection + job + preflight results → resolved job spec and Flink submission request |
+| **Renderer** | Jinja2: template + connection + job + preflight results → Flink submission request (the runner reads the YAML files itself) |
 | **Flink client** | Starts the PyFlink runner, polls and cancels jobs through the Flink REST API |
 | **Publisher** | Verifies row counts and atomically publishes staged output ([ADR-0004](adr/0004-lake-layout-and-delta-commit.md)) |
 | **Pull request publisher** | Opens a pull request on data-onboarding-orchestration with the saved file through the GitHub REST API ([ADR-0017](adr/0017-ui-opens-pull-requests-on-orchestration.md)). The API has no Airflow client |
@@ -100,12 +100,12 @@ One PostgreSQL 16 instance holds two databases for this repository: Airflow's me
 
 | Table | Content |
 |---|---|
-| `runs` | One row per run, keyed by DAG id and run id: `ingest_date`, Flink job id, expected rows, written rows, output paths, resolved spec, error |
+| `runs` | One row per run, keyed by DAG id and run id: `ingest_date`, Flink job id, expected rows, written rows, output paths, submission request, error |
 | `run_events` | Append-only state transitions and diagnostics |
 
 Why a separate `platform` database instead of tables in `airflow`:
 - **Airflow owns its schema.** `airflow db migrate` changes it on upgrades and `airflow db clean` purges old runs, so it is operational state, not a record to keep.
-- **Airflow doesn't model these details:** Flink job id, expected and written rows, output paths, the resolved spec.
+- **Airflow doesn't model these details:** Flink job id, expected and written rows, output paths, the submission request.
 - **Own role and password** (`platform`): the run records survive Airflow upgrades and clean-ups, and Airflow's credentials can't change them.
 
 Until Phase 5 the `platform` database exists but is empty. It is created on the first start anyway, because the server's init script only runs on an empty volume; adding it later would mean creating the role and database by hand as the superuser.
@@ -114,12 +114,15 @@ Roles on the shared server, one password each: `postgres` (superuser, admin only
 
 ### 3.5 Ingestion runner
 
-A single generic **PyFlink** program ([ADR-0010](adr/0010-pyflink-runner.md)), written with the Table API and Flink SQL only, so the job itself runs entirely in the JVM. It runs on the JobManager, the only Flink node that needs Python; connectors, JDBC drivers and the `flink-azure-fs-hadoop` plugin are part of the Flink image. It receives the path to a resolved job spec, never a template, and:
+A single generic **PyFlink** program ([ADR-0010](adr/0010-pyflink-runner.md)), written with the Table API and Flink SQL only, so the job itself runs entirely in the JVM. It runs on the JobManager, the only Flink node that needs Python; connectors, JDBC drivers and the `flink-azure-fs-hadoop` plugin are part of the Flink image. It receives the path to a job file and reads that file, its connection and the two templates as merged: there is no resolved spec ([ADR-0010](adr/0010-pyflink-runner.md), updated 2026-11-02). It:
 
 1. Resolves secret references when it builds the job graph (§3.7).
-2. Declares the source with `CREATE TABLE`: the Flink JDBC table connector over a table (**table mode**) or over the user's query as a derived table (**query mode**), with partitioned scans in both; or the BigQuery connector.
-3. Adds audit columns `ingest_date`, `_ingest_run_id`, `_ingested_at` as SQL literals.
-4. Writes Parquet into the run's staging location with an `INSERT ... SELECT` into the filesystem connector.
+2. Asks the source for the query's columns and types (JDBC metadata through the Flink JVM) and, for a partitioned scan, the partition column's bounds.
+3. Declares the source with `CREATE TABLE`: the Flink JDBC table connector over the job's query as a derived table `(<query>) AS q`, with a partitioned scan when the job sets a `partition_column` (table mode and query mode are the same to the runner; Phase 3's rewrites simplify the query before it gets here); or the BigQuery connector (to do).
+4. Adds audit columns `ingest_date`, `_ingest_run_id`, `_ingested_at` as SQL literals.
+5. Writes Parquet into the run's staging location, `_staging/<run_id>/` of the sink's storage root, with an `INSERT ... SELECT` into the filesystem connector.
+
+The code is in `code/runner/` ([README](../code/runner/README.md)); the first cut has not run on a cluster yet.
 
 The runner writes no manifest: the publisher counts written rows from the Parquet footers.
 
@@ -129,7 +132,7 @@ A standalone session cluster ([ADR-0007](adr/0007-flink-standalone-session-clust
 
 - **JobManager** on VM 1: REST API and web UI on port 8081, RPC and blob server for the TaskManagers.
 - **TaskManagers** on VM 2, each with a fixed number of task slots shared by all runs.
-- Each run is one Flink job started with `POST /jars/{flink-python}/run`, entry class `org.apache.flink.client.python.PythonDriver`, arguments `-py <runner>/main.py --spec <path>`. Resolved specs are written to a run directory shared by Airflow and the JobManager on VM 1.
+- Each run is one Flink job started with `POST /jars/{flink-python}/run`, entry class `org.apache.flink.client.python.PythonDriver`, arguments `-py <runner>/main.py --job <path> --run-id <run_id> --ingest-date <date>`. The job and connection files are mounted read-only on the JobManager.
 
 ### 3.7 Secrets and identity
 
@@ -183,7 +186,7 @@ sequenceDiagram
     AF->>FS: DAG factory parses → DAG ingest__<name>
     Note over AF: schedule fires, or "Run now" via Airflow REST API
     AF->>SRC: preflight (schema, bounds, COUNT)
-    AF->>JM: POST /jars/{id}/run --spec <path>
+    AF->>JM: POST /jars/{id}/run --job <path>
     JM->>TM: deploy tasks
     TM->>SRC: bounded parallel read
     TM->>LAKE: write Parquet to _staging/<run_id>
@@ -228,7 +231,7 @@ Four YAML kinds, each owned by a different role. Full field reference: [configur
 | `Connection` | DE team (UI or pull request) | One onboarded source instance plus load limits |
 | `IngestionJob` | Users / data team (UI or pull request) | Connection + query + sink + verification + runtime settings + schedule; one file = one DAG |
 
-The renderer combines them into a **resolved job spec** and a **Flink submission request**. Both are stored per run for audit and replay. Why not Flink CDC pipeline YAML: [ADR-0003](adr/0003-own-yaml-model.md).
+The renderer turns the job into a **Flink submission request** (the arguments for the runner), stored per run for audit and replay; the runner reads the YAML files themselves. Why not Flink CDC pipeline YAML: [ADR-0003](adr/0003-own-yaml-model.md).
 
 ## 7. Query handling
 

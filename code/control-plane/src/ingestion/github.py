@@ -37,6 +37,7 @@ class PullRequestPublisher:
         client: httpx.Client | None = None,
         now: dt.datetime | None = None,
     ) -> None:
+        """``client`` and ``now`` are replaced by fakes in tests; pull requests go to ``base_branch``."""
         self.repository = repository
         self.base_branch = base_branch
         self._now = now
@@ -55,6 +56,7 @@ class PullRequestPublisher:
         json: dict[str, Any] | None = None,
         params: dict[str, str] | None = None,
     ) -> httpx.Response:
+        """One GitHub REST call; GitHubError with the status and GitHub's message otherwise."""
         url = f"{API_URL}/repos/{self.repository}{path}"
         try:
             response = self._client.request(method, url, headers=self._headers, json=json, params=params)

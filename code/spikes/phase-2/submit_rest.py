@@ -33,6 +33,7 @@ def upload_flink_python() -> str:
 
 
 def main(script: str, script_args: list[str]) -> None:
+    """Uploads the flink-python JAR, submits ``script`` through the REST API with PythonDriver and waits."""
     jar_id = upload_flink_python()
     started = time.monotonic()
     response = requests.post(

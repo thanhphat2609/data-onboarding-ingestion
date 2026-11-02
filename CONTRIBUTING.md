@@ -50,3 +50,15 @@ git push origin v0.1.0-rc.1
 | Python (control plane, Airflow) | Python 3.12, `ruff` (lint + format), `mypy`, `pytest` |
 | Python (runner) | Python 3.11 (PyFlink 1.20 limit), same tooling; Table API and SQL only, no Python UDFs |
 | TypeScript (UI) | `tsc` (strict), `oxlint` |
+| Dead code | `vulture` in CI (config in each `pyproject.toml`); `ruff` already catches unused imports and variables |
+
+### Comments and docstrings
+
+- Comments say **why**, never what the next line does: a constraint, a driver quirk, a decision (link the ADR).
+- A module starts with a docstring: what it is for and what it must not do.
+- A public function gets a one- or two-line docstring when its name and types don't tell the whole story: what it returns, when it returns `None` or raises, what it changes. Functions of about 15 lines or more always get one. Small, self-explanatory helpers (`quote`, `options`) don't.
+- Don't leave commented-out code; Git keeps history.
+
+### Dead code
+
+When a change makes a function, class, file or setting unused, delete it in the same pull request, with its tests and docs. `vulture` fails CI on unused code; if the use is outside what it reads (a framework hook, another repository), add the name to `ignore_names` in `pyproject.toml` with a comment that says who uses it.

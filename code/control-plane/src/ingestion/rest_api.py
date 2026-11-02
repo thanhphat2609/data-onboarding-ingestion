@@ -55,10 +55,12 @@ class FetchResult:
     pages: int
 
     def as_dict(self) -> dict[str, Any]:
+        """The result as a plain dict, to return from an Airflow task."""
         return asdict(self)
 
 
 def landing_topic(template: Template, job_name: str) -> str:
+    """Name of a job's landing topic, from the template's pattern."""
     return render(str(template.body["landing"]["topic"]), {"job": job_name})
 
 
@@ -81,6 +83,7 @@ def dig(document: Any, path: str | None) -> Any:
 
 
 def _seconds(duration: str) -> float:
+    """Turns ``30s``, ``15m`` or ``2h`` into seconds."""
     return float(int(duration[:-1]) * {"s": 1, "m": 60, "h": 3600}[duration[-1]])
 
 
@@ -88,6 +91,7 @@ class _Api:
     """GET with auth, a request rate limit and retries on 429/5xx (honouring a numeric Retry-After)."""
 
     def __init__(self, params: dict[str, Any], client: httpx.Client, sleep: Callable[[float], None]) -> None:
+        """Sets up the base URL, the request rate and the token (header or query) from the connection."""
         self.base_url = str(params["base_url"]).rstrip("/")
         self.client = client
         self.sleep = sleep
@@ -111,6 +115,10 @@ class _Api:
         self._last_request = float("-inf")
 
     def get(self, path: str, query: dict[str, str]) -> Any:
+        """GET as JSON, at most one request per ``interval``; retries 429 and 5xx with backoff (Retry-After wins).
+
+        Raises FetchError after the last attempt. Messages never hold the URL: with query auth it holds the token.
+        """
         url = f"{self.base_url}/{path.lstrip('/')}"
         for attempt in range(1, MAX_ATTEMPTS + 1):
             wait = self._last_request + self.interval - time.monotonic()
@@ -219,6 +227,7 @@ class KafkaLanding:
 
     def __init__(self, bootstrap_servers: str, timeout_s: float = 60.0) -> None:
         # Untyped on purpose: only the Airflow image has confluent-kafka, the API and CI don't.
+        """Connects to Redpanda; confluent-kafka is imported here because only Airflow's image has it."""
         self.kafka: Any = importlib.import_module("confluent_kafka")
         self.kafka_admin: Any = importlib.import_module("confluent_kafka.admin")
         config = {"bootstrap.servers": bootstrap_servers}
@@ -227,6 +236,7 @@ class KafkaLanding:
         self.timeout_s = timeout_s
 
     def prepare(self, topic: str) -> int:
+        """Creates the single-partition topic if needed and returns its latest offset."""
         if topic not in self.admin.list_topics(timeout=self.timeout_s).topics:
             future = self.admin.create_topics([self.kafka_admin.NewTopic(topic, num_partitions=1)])[topic]
             try:
@@ -241,10 +251,12 @@ class KafkaLanding:
         return int(latest.offset)
 
     def send(self, topic: str, values: list[bytes]) -> list[int]:
+        """Writes the values to partition 0 in order; FetchError unless every one is acknowledged."""
         offsets: list[int] = []
         errors: list[str] = []
 
         def delivered(error: Any, message: Any) -> None:
+            """Delivery callback: collects the offset, or the error, of one message."""
             if error is not None:
                 errors.append(str(error))
             else:

@@ -64,10 +64,12 @@ QUERY_COLUMNS = "customer_id INT, full_name STRING, segment_name STRING"
 
 
 def options(values: dict[str, object]) -> str:
+    """The body of a ``WITH (...)`` clause: one ``'key' = 'value'`` per option, quotes escaped."""
     return ",\n  ".join(f"'{k}' = '{str(v).replace(chr(39), chr(39) * 2)}'" for k, v in values.items())
 
 
 def main() -> None:
+    """Runs one spike: the chosen source and table (or query) to Parquet; prints a ``SPIKE`` line."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", choices=SOURCES, required=True)
     parser.add_argument("--mode", choices=["table", "query"], default="table")

@@ -35,9 +35,18 @@ jobs:
       - name: Mypy
         working-directory: code/control-plane
         run: mypy --no-incremental src
+      - name: Vulture (dead code)
+        working-directory: code/control-plane
+        run: vulture
       - name: Pytest (offline, fake API and in-memory landing)
         working-directory: code/control-plane
         run: pytest -q
+      - name: Runner (lint, types, tests)
+        run: |
+          pip install "./code/runner[dev]"
+          ruff check --no-cache code/runner
+          ruff format --no-cache --check code/runner
+          (cd code/runner && mypy --no-incremental ingestion_runner && vulture && pytest -q)
 
   ui:
     name: Web UI (types, lint, build)

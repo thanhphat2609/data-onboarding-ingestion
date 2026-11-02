@@ -1,6 +1,6 @@
 # Phase 2 spikes
 
-Throwaway jobs that prove the risky building blocks on Flink 1.20 before the runner is written (roadmap Phase 2). Results go to [docs/spikes/phase-2.md](../../../docs/spikes/phase-2.md); the code here is not reused as is.
+Throwaway jobs that prove the risky building blocks on Flink 1.20 before the runner is built on them (roadmap Phase 2; the first cut of the runner is in [code/runner/](../../runner/README.md) and is what these spikes confirm). Results go to [docs/spikes/phase-2.md](../../../docs/spikes/phase-2.md); the code here is not reused as is.
 
 Mounted read-only on the JobManager at `/opt/spikes`. Output goes to `infrastructure/non-prod/data/spike-out/` (`/opt/ingestion/spike-out` in the Flink containers).
 

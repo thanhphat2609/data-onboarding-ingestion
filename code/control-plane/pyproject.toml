@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "ruff==0.17.2", "mypy==2.4.0", "types-PyYAML", "types-jsonschema"]
+dev = ["pytest==9.1.1", "ruff==0.17.2", "mypy==2.4.0", "vulture==2.14", "types-PyYAML", "types-jsonschema"]
 
 [build-system]
 requires = ["setuptools>=75"]
@@ -32,6 +32,18 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+# Dead code finder: `vulture` in CI lists functions, classes and variables that nothing uses. Delete what it finds.
+# These are used from outside what it reads (framework hooks, data-onboarding-orchestration, library overrides).
+[tool.vulture]
+paths = ["src"]
+min_confidence = 60
+ignore_decorators = ["@app.*"]  # FastAPI routes and exception handlers
+ignore_names = [
+  "create_app",  # uvicorn factory
+  "landing_table_sql", "fetch_to_landing", "KafkaLanding", "start_offset", "end_offset",  # the DAG factory
+  "indentless", "check_hostname", "verify_mode",  # overrides of PyYAML and ssl
+]
 
 [tool.mypy]
 python_version = "3.11"

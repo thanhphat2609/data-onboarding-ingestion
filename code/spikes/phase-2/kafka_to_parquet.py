@@ -28,10 +28,12 @@ COLUMNS = "order_id BIGINT, status STRING, payload STRING, _fetched_at TIMESTAMP
 
 
 def options(values: dict[str, object]) -> str:
+    """The body of a ``WITH (...)`` clause: one ``'key' = 'value'`` per option, quotes escaped."""
     return ",\n  ".join(f"'{k}' = '{str(v).replace(chr(39), chr(39) * 2)}'" for k, v in values.items())
 
 
 def main() -> None:
+    """Reads the offset range of one run from a landing topic and writes it to Parquet."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--topic", required=True)
     parser.add_argument("--start", type=int, required=True, help="first offset of the run (inclusive)")

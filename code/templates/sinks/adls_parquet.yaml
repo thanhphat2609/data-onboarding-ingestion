@@ -3,6 +3,8 @@ name: adls_parquet
 version: 1
 format: parquet
 uri: "abfss://{{ container }}@{{ storage_account }}.dfs.core.windows.net/parquet/{{ path }}"
+# Where the runner writes (ADR-0004); the publisher renames <staging>/ingest_date=<date> into the table path.
+staging_uri: "abfss://{{ container }}@{{ storage_account }}.dfs.core.windows.net/_staging/{{ run_id }}"
 
 params:
   storage_account:     { type: string, required: true, description: "ADLS Gen2 account with hierarchical namespace" }

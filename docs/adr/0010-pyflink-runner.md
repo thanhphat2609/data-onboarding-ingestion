@@ -7,7 +7,7 @@
 
 The architecture planned the generic ingestion runner as a Java 17 / Maven project. Everything else in the platform is Python: the Ingestion API, the CLI, the Airflow DAG factory and tasks. The team that maintains the platform, and the people who join it later, work in Python; a single Java component would be the part nobody is comfortable changing.
 
-The runner is small: it reads a resolved job spec, declares a source and a sink, and starts one bounded job. It does not transform rows beyond adding audit columns.
+The runner is small: it reads the job file, its connection and the templates, declares a source and a sink, and starts one bounded job. It does not transform rows beyond adding audit columns.
 
 ## Decision
 
@@ -16,9 +16,15 @@ The runner is small: it reads a resolved job spec, declares a source and a sink,
   - TaskManagers need no Python; their image and performance stay as they are.
   - Only the JobManager image adds Python and PyFlink, because it runs the script that builds the job.
 - Express everything in SQL: sources and sinks as `CREATE TABLE` with the JDBC, BigQuery and filesystem connectors; audit columns `ingest_date`, `_ingest_run_id` and `_ingested_at` as literals in the `INSERT ... SELECT`.
-- **Submit through the Flink REST API** with the `flink-python` JAR shipped with Flink: `POST /jars/{flink-python}/run`, entry class `org.apache.flink.client.python.PythonDriver`, arguments `-py <runner>/main.py --spec <path>`. Airflow needs no Flink client and no Java.
+- **Submit through the Flink REST API** with the `flink-python` JAR shipped with Flink: `POST /jars/{flink-python}/run`, entry class `org.apache.flink.client.python.PythonDriver`, arguments `-py <runner>/main.py --job <path> --run-id <run_id> --ingest-date <date>`. Airflow needs no Flink client and no Java.
 - **Query mode** (free-form SQL with joins and CTEs) passes the user's query to the JDBC table connector as a derived table, `(<query>) AS q`. CTEs are inlined into derived tables by sqlglot before rendering; recursive CTEs are rejected. If the connector cannot take a derived table for a dialect, the fallback is the Java `JdbcSource` wrapped through PyFlink's Java gateway.
 - **Written row counts** come from the Parquet footers of the staged files, read by the publisher. The runner does not write a manifest, because a job submitted through REST cannot reliably run code after the job ends.
+
+## Update 2026-11-02: no resolved spec
+
+The first cut of the runner (`code/runner/`, [README](../../code/runner/README.md)) reads the merged YAML files directly: the `IngestionJob`, its `Connection` and the two templates. There is no resolved job spec and no `spec_version`: the files are written by the Data Team through pull requests, and the template versions (`mysql@1`, `adls_parquet@1`) already version the contract between the repositories. What the old spec carried is found at run time instead: the runner asks the source for the query's columns (JDBC metadata, through the Flink JVM, so no database client is added to the JobManager) and for the partition column's bounds. The expected row count stays a preflight and `verify` concern of Airflow.
+
+The status stays *Proposed* until spikes 5 and 6 have run on a cluster: the derived table `(<query>) AS q` per dialect, and submission with `PythonDriver`.
 
 ## Consequences
 

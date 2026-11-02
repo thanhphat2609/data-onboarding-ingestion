@@ -43,6 +43,10 @@ def create_app(
     publisher: PullRequestPublisher | None = None,
     source_factory: Callable[[Document, Template], SourceClient] = client_for,
 ) -> FastAPI:
+    """Builds the API; ``publisher`` and ``source_factory`` are replaced by fakes in tests.
+
+    With ``SAVE_MODE=pull_request`` it refuses to start without a GitHub token, so a save never fails halfway.
+    """
     settings = settings or Settings.from_env()
     registry = TemplateRegistry(settings.templates_dir)
     store = ConfigStore(settings, registry)
@@ -54,26 +58,32 @@ def create_app(
 
     @app.exception_handler(InvalidSpec)
     def invalid_spec(_: Request, error: InvalidSpec) -> JSONResponse:
+        """422 with every validation message of the file."""
         return JSONResponse({"detail": str(error), "errors": error.errors}, status_code=422)
 
     @app.exception_handler(NotFound)
     @app.exception_handler(TemplateNotFound)
     def not_found(_: Request, error: Exception) -> JSONResponse:
+        """404 for a connection or job that doesn't exist."""
         return JSONResponse({"detail": str(error).strip("'\"")}, status_code=404)
 
     @app.exception_handler(Conflict)
     def conflict(_: Request, error: Conflict) -> JSONResponse:
+        """409 when the save conflicts with an existing file."""
         return JSONResponse({"detail": str(error)}, status_code=409)
 
     @app.exception_handler(SourceError)
     def source_error(_: Request, error: SourceError) -> JSONResponse:
+        """422 when the source can't be reached or refuses the query."""
         return JSONResponse({"detail": str(error)}, status_code=422)
 
     @app.exception_handler(GitHubError)
     def github_error(_: Request, error: GitHubError) -> JSONResponse:
+        """502 when the pull request can't be opened; nothing is saved."""
         return JSONResponse({"detail": str(error)}, status_code=502)
 
     def require_name(path_name: str, document: Document) -> None:
+        """The name in the body must be the one in the URL: names never change."""
         if document.get("name") != path_name:
             raise InvalidSpec([f'name: must be "{path_name}"; names can\'t be changed after creation'])
 
@@ -81,14 +91,17 @@ def create_app(
 
     @app.get("/api/health")
     def health() -> Document:
+        """Liveness check for Docker."""
         return {"status": "ok"}
 
     @app.get("/api/templates")
     def templates() -> Document:
+        """All source and sink templates, for the Web UI's forms."""
         return {"sources": [t.body for t in registry.sources()], "sinks": [t.body for t in registry.sinks()]}
 
     @app.get("/api/schemas/{name}")
     def schema(name: str) -> Document:
+        """One JSON Schema (connection or ingestion-job), for the Web UI."""
         return registry.schema(name)
 
     # --- saving: a file in pipelines/, plus a pull request in pull_request mode -----------------------
@@ -100,6 +113,7 @@ def create_app(
             return None, opened
 
         def publish(relative_path: str, text: str) -> None:
+            """Opens the pull request for one file and keeps it in ``opened``."""
             action = "add" if is_new else "update"
             opened.append(
                 publisher.open(
@@ -115,6 +129,7 @@ def create_app(
         return publish, opened
 
     def with_pull_request(saved: Document, opened: list[PullRequest]) -> Document:
+        """Adds the pull request (number, url, branch) to the saved document, if one was opened."""
         if not opened:
             return saved
         pull = opened[0]
@@ -124,22 +139,27 @@ def create_app(
 
     @app.get("/api/connections")
     def list_connections() -> list[Document]:
+        """All valid connections of the working copy."""
         return store.list_connections()
 
     @app.get("/api/connections/{name}")
     def get_connection(name: str) -> Document:
+        """One connection by name; 404 if it doesn't exist."""
         return store.get_connection(name)
 
     def save_connection(connection: Document, is_new: bool) -> Document:
+        """Saves a connection and, in pull_request mode, opens its pull request first."""
         publish, opened = publication("connection", str(connection.get("name")), connection.get("owner"), is_new)
         return with_pull_request(store.save_connection(connection, is_new, publish), opened)
 
     @app.post("/api/connections", status_code=201)
     def create_connection(connection: Annotated[Document, Body()]) -> Document:
+        """Creates a new connection."""
         return save_connection(connection, is_new=True)
 
     @app.put("/api/connections/{name}")
     def update_connection(name: str, connection: Annotated[Document, Body()]) -> Document:
+        """Changes an existing connection; its name can't change."""
         require_name(name, connection)
         return save_connection(connection, is_new=False)
 
@@ -155,44 +175,53 @@ def create_app(
 
     @app.get("/api/jobs")
     def list_jobs() -> list[Document]:
+        """All valid jobs with their Airflow DAG ids."""
         return [{"job": job, "dagId": dag_id(job["name"])} for job in store.list_jobs()]
 
     @app.get("/api/jobs/{name}")
     def get_job(name: str) -> Document:
+        """One job by name; 404 if it doesn't exist."""
         return store.get_job(name)
 
     def save_job(job: Document, is_new: bool) -> Document:
+        """Saves a job and, in pull_request mode, opens its pull request first."""
         publish, opened = publication("job", str(job.get("name")), job.get("owner"), is_new)
         return with_pull_request(store.save_job(job, is_new, publish), opened)
 
     @app.post("/api/jobs", status_code=201)
     def create_job(job: Annotated[Document, Body()]) -> Document:
+        """Creates a new job."""
         return save_job(job, is_new=True)
 
     @app.put("/api/jobs/{name}")
     def update_job(name: str, job: Annotated[Document, Body()]) -> Document:
+        """Changes an existing job; its name can't change."""
         require_name(name, job)
         return save_job(job, is_new=False)
 
     @app.get("/api/invalid-files")
     def invalid_files() -> list[Document]:
+        """Files of the working copy that can't be loaded, with the reason, for the UI to flag."""
         return [asdict(f) for f in store.invalid_files()]
 
     # --- SQL -----------------------------------------------------------------------------------------
 
     def connection_template(name: str) -> tuple[Document, Template]:
+        """A connection and its source template; the connection is validated first."""
         connection = store.get_connection(name)
         validate_connection(connection, registry)
         return connection, registry.source(connection["template"])
 
     @app.post("/api/sql/validate")
     def validate_sql(request: SqlRequest) -> Document:
+        """Checks the query against the connection's dialect: one read-only statement."""
         _, template = connection_template(request.connection)
         result = check_sql(request.query, str(template.body["dialect"]))
         return {"ok": result.ok, "mode": result.mode, "issues": [asdict(i) for i in result.issues]}
 
     @app.post("/api/sql/preview")
     def preview(request: SqlRequest) -> Document:
+        """First rows and column types of the query, read from the real source."""
         connection, template = connection_template(request.connection)
         check = check_sql(request.query, str(template.body["dialect"]))
         if not check.ok:

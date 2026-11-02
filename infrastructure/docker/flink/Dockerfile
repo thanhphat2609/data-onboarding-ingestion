@@ -33,6 +33,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /usr/local/bin/uv
 ENV UV_PYTHON_INSTALL_DIR=/opt/python UV_NO_CACHE=1
 RUN set -eux; \
     uv venv --python 3.11 /opt/pyflink; \
-    uv pip install --python /opt/pyflink/bin/python apache-flink==1.20.5; \
+    uv pip install --python /opt/pyflink/bin/python apache-flink==1.20.5 pyyaml==6.0.3; \
     rm /usr/local/bin/uv
 ENV PATH=/opt/pyflink/bin:$PATH

@@ -27,7 +27,7 @@ This repository should change rarely: a new source template, a new sink, or a ne
 
 **`pipelines/` here is a git-ignored working copy.** The API writes the saved file there so the job wizard can use a connection before its pull request is merged. Pointing `INGESTION_PIPELINES_DIR` at a checkout of the orchestration repository shows what is already merged. The repository has no example connections or jobs: a demo creates them by hand in the Web UI.
 
-**The contract between the repositories** is the schemas in `code/templates/schemas/` (read by the DAG factory) and, from Phase 4, the resolved job spec that Airflow writes and the runner reads with `--spec <path>`. The spec gets a `spec_version` so the runner and the DAG factory can change one after the other.
+**The contract between the repositories** is the schemas in `code/templates/schemas/` (read by the DAG factory) and the files themselves: the runner reads the merged job and connection files directly with `--job <path>` ([ADR-0010](0010-pyflink-runner.md)). There is no intermediate spec and no `spec_version` (decided 2026-11-02); the template versions (`mysql@1`) are what lets this repository and the pipelines change one after the other.
 
 ## Consequences
 

@@ -75,13 +75,17 @@ services:
       - path: sources.env
         required: false
     volumes:
-      # Resolved job specs written by Airflow, which mounts this directory too (ADR-0007, ADR-0016).
+      # Run directory shared with Airflow (ADR-0007, ADR-0016). The runner no longer reads it: it reads pipelines/ below.
       - ./data/runs:/opt/ingestion/runs:ro
       # Docker fills the empty volume from the image on first start; Airflow reads it.
       - flink-examples:/opt/flink/examples
       # Phase 2 spike jobs and their local Parquet output (written by the TaskManager).
       - ../../code/spikes:/opt/spikes:ro
       - ./data/spike-out:/opt/ingestion/spike-out
+      # The runner (ADR-0010), the templates it reads, and the saved connections and jobs (the Web UI's working copy).
+      - ../../code/runner:/opt/runner:ro
+      - ../../code/templates:/opt/ingestion/templates:ro
+      - ../../pipelines:/opt/ingestion/pipelines:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8081"]
       interval: 15s

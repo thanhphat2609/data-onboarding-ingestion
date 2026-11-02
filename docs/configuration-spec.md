@@ -235,6 +235,7 @@ source:
 | `name`, `version` | yes | |
 | `format` | yes | `parquet` or `delta` |
 | `uri` | yes | Jinja template for the table root URI |
+| `staging_uri` | Parquet sinks | Jinja template for where the runner writes: the parameters plus `run_id`. The publisher renames `<staging>/ingest_date=<date>` into the table root ([ADR-0004](adr/0004-lake-layout-and-delta-commit.md)) |
 | `params` | yes | Parameters an `IngestionJob` sets under `sink.params` |
 | `partition_by` | yes | Always starts with `ingest_date` in v1 |
 | `publish` | yes | Publisher strategy: `rename_partition` (Parquet) or `delta_commit` (Delta) |
@@ -247,6 +248,7 @@ name: adls_parquet
 version: 1
 format: parquet
 uri: "abfss://{{ container }}@{{ storage_account }}.dfs.core.windows.net/parquet/{{ path }}"
+staging_uri: "abfss://{{ container }}@{{ storage_account }}.dfs.core.windows.net/_staging/{{ run_id }}"
 
 params:
   storage_account:     { type: string, required: true }
@@ -401,10 +403,9 @@ tags: [crm, daily]
 
 ## Rendered output (per run, never edited by hand)
 
-- **Resolved job spec** (`job.yaml`): all templates expanded, preflight results inlined (schema, bounds, expected count), secrets still as references. Written to the run directory shared by Airflow and the Flink JobManager.
 - **Flink submission request** for the session cluster ([ADR-0007](adr/0007-flink-standalone-session-cluster.md)), rendered with the defaults in `code/templates/runtime/`.
 
-Both are stored in `runs` for audit and can be re-submitted with `ingestctl submit --run <run_id>`.
+It is stored in `runs` for audit and can be re-submitted with `ingestctl submit --run <run_id>`.
 
 ```http
 POST /jars/<flink-python-jar-id>/run
@@ -413,7 +414,7 @@ Content-Type: application/json
 {
   "entryClass": "org.apache.flink.client.python.PythonDriver",
   "parallelism": 8,
-  "programArgsList": ["-py", "/opt/ingestion/runner/main.py", "--spec", "/opt/ingestion/runs/<run_id>/job.yaml"]
+  "programArgsList": ["-py", "/opt/runner/main.py", "--job", "/opt/ingestion/pipelines/jobs/<name>.yaml", "--run-id", "<run_id>", "--ingest-date", "<date>"]
 }
 ```
 

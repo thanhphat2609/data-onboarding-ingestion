@@ -45,11 +45,13 @@ class InvalidFile:
 class _Dumper(yaml.SafeDumper):
     def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
         # Indent list items under their key (`tags:\n  - crm`), per .editorconfig and the examples.
+        """Indents list items under their key."""
         super().increase_indent(flow, False)
 
 
 def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
     # SQL and other multi-line text as literal blocks (`query: |`), like the hand-written examples.
+    """Writes multi-line text, such as SQL, as a literal block."""
     style = "|" if "\n" in value else None
     return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
 
@@ -71,6 +73,7 @@ def _clean(value: Any) -> Any:
 
 
 def to_yaml(document: dict[str, Any], key_order: list[str]) -> str:
+    """The document as YAML: empty values dropped, the keys in ``key_order`` first."""
     cleaned = _clean(document)
     ordered = {key: cleaned[key] for key in key_order if key in cleaned}
     ordered.update({k: v for k, v in cleaned.items() if k not in ordered})
@@ -78,6 +81,7 @@ def to_yaml(document: dict[str, Any], key_order: list[str]) -> str:
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    """Reads a YAML file that must hold a mapping."""
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as error:
@@ -91,6 +95,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _write_atomic(path: Path, text: str) -> None:
     # The temporary name doesn't end in .yaml, so the DAG factory ignores it.
+    """Writes through a temporary file and a rename, so a reader never sees half a file."""
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
@@ -98,6 +103,7 @@ def _write_atomic(path: Path, text: str) -> None:
 
 class ConfigStore:
     def __init__(self, settings: Settings, registry: TemplateRegistry) -> None:
+        """A store over the connection and job files of ``settings``."""
         self.settings = settings
         self.registry = registry
         self._lock = threading.Lock()
@@ -105,12 +111,14 @@ class ConfigStore:
     # --- reading ---------------------------------------------------------------------------------
 
     def _read(self, directory: Path, name: str, kind: str) -> dict[str, Any]:
+        """One document by file name; NotFound when the file doesn't exist."""
         path = directory / f"{name}.yaml"
         if not path.exists():
             raise NotFound(f'{kind} "{name}" not found')
         return _load_yaml(path)
 
     def _scan(self, directory: Path, kind: str) -> tuple[list[dict[str, Any]], list[InvalidFile]]:
+        """The valid documents of a folder, and the files that can't be loaded."""
         valid: list[dict[str, Any]] = []
         invalid: list[InvalidFile] = []
         connections = {c["name"]: c for c in self.list_connections()} if kind == "job" else {}
@@ -130,18 +138,23 @@ class ConfigStore:
         return valid, invalid
 
     def list_connections(self) -> list[dict[str, Any]]:
+        """All valid connections."""
         return self._scan(self.settings.connections_dir, "connection")[0]
 
     def list_jobs(self) -> list[dict[str, Any]]:
+        """All valid jobs."""
         return self._scan(self.settings.jobs_dir, "job")[0]
 
     def invalid_files(self) -> list[InvalidFile]:
+        """The connection and job files that can't be loaded, with the reason."""
         return self._scan(self.settings.connections_dir, "connection")[1] + self._scan(self.settings.jobs_dir, "job")[1]
 
     def get_connection(self, name: str) -> dict[str, Any]:
+        """One connection by name; NotFound if it doesn't exist."""
         return self._read(self.settings.connections_dir, name, "Connection")
 
     def get_job(self, name: str) -> dict[str, Any]:
+        """One job by name; NotFound if it doesn't exist."""
         return self._read(self.settings.jobs_dir, name, "Job")
 
     # --- writing ---------------------------------------------------------------------------------
@@ -155,6 +168,7 @@ class ConfigStore:
         keys: list[str],
         publish: Publish | None,
     ) -> None:
+        """Writes one file: new names must not exist, existing ones must; ``publish`` runs before the write."""
         name = document["name"]
         path = directory / f"{name}.yaml"
         with self._lock:
@@ -172,11 +186,13 @@ class ConfigStore:
     def save_connection(
         self, connection: dict[str, Any], is_new: bool, publish: Publish | None = None
     ) -> dict[str, Any]:
+        """Validates and saves a connection; returns the stored document."""
         validate_connection(connection, self.registry)
         self._save(self.settings.connections_dir, connection, is_new, "Connection", _CONNECTION_KEYS, publish)
         return self.get_connection(connection["name"])
 
     def save_job(self, job: dict[str, Any], is_new: bool, publish: Publish | None = None) -> dict[str, Any]:
+        """Validates and saves a job against its connection; returns the stored document."""
         connection: dict[str, Any] | None = None
         if isinstance(job, dict) and isinstance(job.get("connection"), str):
             try:

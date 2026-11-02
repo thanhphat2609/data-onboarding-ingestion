@@ -1,6 +1,6 @@
 # Control plane
 
-The Python library and the **Ingestion API** (FastAPI) behind the Web UI. It is not Flink code: the generic Flink job lives in `code/runner/` (Phase 4). The control plane decides *what* to run and checks it; the runner only executes a resolved spec.
+The Python library and the **Ingestion API** (FastAPI) behind the Web UI. It is not Flink code: the generic Flink job lives in `code/runner/` (Phase 4). The control plane decides *what* to run and checks it; the runner reads the merged job and connection files and executes them.
 
 ## Why it exists
 

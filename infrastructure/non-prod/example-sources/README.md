@@ -87,7 +87,7 @@ CI in the orchestration repository validates the files; merge the pull requests.
 - database jobs: `validate → submit → wait`;
 - API jobs: `validate → fetch → submit → wait`.
 
-Unpause and trigger it in Airflow; the Web UI's **Airflow** button on the jobs page opens the DAG. Until the runner exists (roadmap Phase 4), `submit` runs Flink's WordCount smoke job. The real read is shown with the Phase 2 spikes ([code/spikes/phase-2/](../../../code/spikes/phase-2/README.md)).
+Unpause and trigger it in Airflow; the Web UI's **Airflow** button on the jobs page opens the DAG. Until the DAG calls the runner (roadmap Phase 5), `submit` runs Flink's WordCount smoke job. The real read of a saved job is done by hand with the runner ([code/runner/README.md](../../../code/runner/README.md)), or with the Phase 2 spikes ([code/spikes/phase-2/](../../../code/spikes/phase-2/README.md)).
 
 ### Reset
 

@@ -22,14 +22,17 @@ class Settings:
 
     @property
     def connections_dir(self) -> Path:
+        """Folder of the connection files."""
         return self.pipelines_dir / "connections"
 
     @property
     def jobs_dir(self) -> Path:
+        """Folder of the job files."""
         return self.pipelines_dir / "jobs"
 
     @classmethod
     def from_env(cls) -> Settings:
+        """Settings from environment variables, with defaults for a checkout of the repository."""
         return cls(
             pipelines_dir=Path(os.environ.get("INGESTION_PIPELINES_DIR", REPO_ROOT / "pipelines")),
             templates_dir=Path(os.environ.get("INGESTION_TEMPLATES_DIR", REPO_ROOT / "code" / "templates")),

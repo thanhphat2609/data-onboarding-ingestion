@@ -15,8 +15,8 @@ ADR-0001 assumed an AKS cluster and the Flink Kubernetes Operator, with one Flin
   - **VM 1** runs the **JobManager**, next to Airflow, the Ingestion API and the Web UI.
   - **VM 2** runs one or more **TaskManagers**. Capacity grows by adding TaskManagers or more VMs, not by changing the jobs.
   - In non-prod every component runs in one Docker Compose project.
-- **Submit runs through the Flink REST API.** The runner is a PyFlink script ([ADR-0010](0010-pyflink-runner.md)) started through the `flink-python` JAR shipped with Flink, uploaded once (`POST /jars/upload`). Each run is one Flink job started with `POST /jars/{jar_id}/run`, entry class `PythonDriver` and the arguments `-py <runner>/main.py --spec <path>`.
-- Resolved job specs are written to a **run directory shared by Airflow and the JobManager**. Both run on VM 1, so a local directory (a shared volume in non-prod) is enough.
+- **Submit runs through the Flink REST API.** The runner is a PyFlink script ([ADR-0010](0010-pyflink-runner.md)) started through the `flink-python` JAR shipped with Flink, uploaded once (`POST /jars/upload`). Each run is one Flink job started with `POST /jars/{jar_id}/run`, entry class `PythonDriver` and the arguments `-py <runner>/main.py --job <path> --run-id <run_id> --ingest-date <date>`.
+- The runner reads the **job and connection files** (and the templates) as merged, from a read-only mount on the JobManager: the files Airflow runs, on VM 1 (the Web UI's working copy `pipelines/` in non-prod). There is no resolved spec and no run directory to share (updated 2026-11-02, [ADR-0010](0010-pyflink-runner.md)).
 - **Secret values never appear in program arguments or in the Flink web UI.** The runner resolves secret references when it builds the job graph ([architecture §3.7](../architecture.md#37-secrets-and-identity)).
 - No JobManager high availability in v1. A JobManager restart fails the running jobs, and Airflow retries the affected runs.
 

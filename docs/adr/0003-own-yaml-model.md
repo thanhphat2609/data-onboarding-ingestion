@@ -9,7 +9,7 @@ The DE team wants to onboard sources and submit jobs as YAML, with one template 
 
 ## Decision
 
-Define a platform-owned YAML model with four kinds (`SourceTemplate`, `SinkTemplate`, `Connection`, `IngestionJob`) described in [configuration-spec.md](../configuration-spec.md). The control plane renders them into a resolved job spec and a Flink job submission request executed by a generic runner.
+Define a platform-owned YAML model with four kinds (`SourceTemplate`, `SinkTemplate`, `Connection`, `IngestionJob`) described in [configuration-spec.md](../configuration-spec.md). The control plane validates them and renders a Flink submission request; a generic runner reads the job, its connection and the templates as they are ([ADR-0010](0010-pyflink-runner.md)).
 
 ## Consequences
 

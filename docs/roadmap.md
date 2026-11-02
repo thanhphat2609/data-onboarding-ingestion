@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-11-01 · Current phase: **Phase 2: Connector spikes**
+Last updated: 2026-11-02 · Current phase: **Phase 2: Connector spikes**
 
 > **Where we left off (2026-10-26).** Phase 1 closed (`v0.1.0`). Phase 2 groundwork is on `main` but nothing has run in Docker yet: Flink image (builds in CI), PostgreSQL and MySQL test sources, spike jobs in `code/spikes/phase-2/`, results template in [spikes/phase-2.md](spikes/phase-2.md). CI runs on every push (green); the Deploy workflow is ready but off until the VMs exist ([ADR-0012](adr/0012-cicd-ssh-deploy.md)).
 >
@@ -15,8 +15,9 @@ Last updated: 2026-11-01 · Current phase: **Phase 2: Connector spikes**
 > 5c. 2026-10-30: **test sources moved out of the platform.** SQL Server, PostgreSQL, MySQL and the test API live in `infrastructure/non-prod/example-sources/`, each with its own Compose file and `.env` (start one alone, or all through the parent file), started by hand for a demo. `pipelines/` starts empty, as in a new prod; the former sample files are examples in `example-sources/examples/` (validated by CI, plus a PostgreSQL and a MySQL job). Source secrets reach the platform through `infrastructure/non-prod/sources.env`, the twin of prod's `vm1/sources.env`. Checked: every Compose file and `bootstrap.sh` (first run and rerun), SQL Server and its seed started alone and then through the parent file (same containers), the read-only login from another container on `ingestion-sources`. Not checked here (Docker Hub rate limit): PostgreSQL, MySQL and the test API containers, and the platform stack with `sources.env`; run step 1 above.
 > 5d. 2026-11-01: **Airflow moved to [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration)** ([ADR-0016](adr/0016-airflow-moves-to-orchestration.md)). `code/airflow/`, the Airflow image and the `local-db` PostgreSQL left this repository; items below that name those paths now mean the same files there. Not run yet in Docker: needs a Codespace check of the two stacks together.
 > 5e. 2026-11-01: **The Web UI opens pull requests on data-onboarding-orchestration** ([ADR-0017](adr/0017-ui-opens-pull-requests-on-orchestration.md)); this repository keeps what changes rarely: Web UI, API, templates and schemas, the PyFlink runner, Flink and Redpanda. Done in this repository: `airflow.py`, the `/runs` endpoints, "Run now", run dots and the pool call removed (the UI links to Airflow); new `github.py` (branch, commit, pull request through the GitHub REST API) and `SAVE_MODE=pull_request` (non-prod default, needs the Codespaces user secret `ORCHESTRATION_GITHUB_TOKEN`; `disk` keeps files local); `pipelines/` is a git-ignored working copy and the repository has no example connections or jobs (the demo creates them by hand); the three test databases now hold `segments` (3), `customers` (10,000) and `orders` (5,000) for several jobs on one connection; CI no longer validates `pipelines/`. Tested offline against a fake GitHub (`tests/test_pull_request_flow.py`); not run against real GitHub or Docker yet.
->    **Prototype week, in order:** (a) create the token and the Codespaces secret; (b) in data-onboarding-orchestration: its own `pipelines/jobs/` and `pipelines/connections/` (with a `.gitkeep`), Compose files and DAG factory reading them there instead of the ingestion checkout, a CI check that validates them with the schemas from here; (c) happy path in a Codespace: start the example sources, create a connection and two jobs on it in the Web UI, merge the pull requests, see two DAGs in Airflow; (d) then Phase 4's runner and a `spec_version` in the resolved spec. Open: the job wizard lists only the working copy, so after a Codespace rebuild merged connections are not offered (point `INGESTION_PIPELINES_DIR` at an orchestration checkout, or read them through the GitHub API); `fetch` still imports `ingestion.rest_api` from this checkout; prod keeps the old `pipelines/`-only sync until Phase 6.
+>    **Prototype week, in order:** (a) create the token and the Codespaces secret; (b) in data-onboarding-orchestration: its own `pipelines/jobs/` and `pipelines/connections/` (with a `.gitkeep`), Compose files and DAG factory reading them there instead of the ingestion checkout, a CI check that validates them with the schemas from here; (c) happy path in a Codespace: start the example sources, create a connection and two jobs on it in the Web UI, merge the pull requests, see two DAGs in Airflow; (d) then the runner (started 2026-11-02, see 5g); it reads the merged YAML files directly, so there is no `spec_version` and no resolved spec. Open: the job wizard lists only the working copy, so after a Codespace rebuild merged connections are not offered (point `INGESTION_PIPELINES_DIR` at an orchestration checkout, or read them through the GitHub API); `fetch` still imports `ingestion.rest_api` from this checkout; prod keeps the old `pipelines/`-only sync until Phase 6.
 > 5f. 2026-11-01: **Configuration only through GitHub** (both repositories). New secret `ORCHESTRATION_GITHUB_TOKEN`: a Codespaces user secret in non-prod (declared in both `devcontainer.json` files, so Codespaces asks for it), an Actions secret in prod (required: the prod Deploy stops without it; written to the API's environment like every setting, ADR-0013). Optional variables `ORCHESTRATION_REPOSITORY`, `ORCHESTRATION_BASE_BRANCH`. `AIRFLOW_ADMIN_PASSWORD` left this repository. The `pipelines/`-only sync moved to the orchestration repository's Deploy workflow (`deploy.sh --pipelines-only`); here the Deploy workflow is manual only. The full list of names: [infrastructure/README.md](../infrastructure/README.md#github-secrets-and-variables) and [prod/README.md](../infrastructure/prod/README.md). Not run in GitHub yet (the VMs don't exist).
+> 5g. 2026-11-02: **Runner started** (`code/runner/`, [ADR-0010](adr/0010-pyflink-runner.md)), ahead of the remaining Phase 2 spikes. The merged YAML files are the spec: the runner reads the job, its connection and the templates directly, with no `spec_version` or resolved-spec document. It asks the source for the query's columns through the Flink JVM (JDBC metadata), builds the JDBC source over `(<query>) AS q`, a Parquet sink and the `INSERT` with the audit columns, and writes to `_staging/<run_id>/` (ADR-0004). New: sink template field `staging_uri`, JobManager mounts and PyYAML, runner checks in CI. Offline tests pass (plan, type mapping, SQL); **not run on a cluster yet**. Same day: the comment and dead-code convention ([CONTRIBUTING.md](../CONTRIBUTING.md#comments-and-docstrings)) with `vulture` in CI, here and in data-onboarding-agent and data-onboarding-orchestration; docstrings added to the long functions that had none. Next: run it in the Codespace as in [code/runner/README.md](../code/runner/README.md) (this is also spikes 3-5 and 6 on the way), then ADLS (spike 8).
 > 6. When the prod VMs exist: [infrastructure/prod/README.md](../infrastructure/prod/README.md) (VM setup, GitHub secrets, `PROD_DEPLOY_ENABLED=true`), deploying data-onboarding-agent first.
 
 Each phase has a single goal, a checklist, concrete deliverables, and exit criteria. A phase is closed only when every exit criterion is met; open items move explicitly to a later phase instead of being dropped. Estimates assume one to two data engineers.
@@ -27,7 +28,7 @@ Each phase has a single goal, a checklist, concrete deliverables, and exit crite
 | [1](#phase-1-non-prod-environment-web-ui-and-airflow) | Non-prod environment, Web UI and Airflow (SQL Server) | 2–3 weeks | Done 2026-10-25 (`v0.1.0`), checks carried over to Phase 2 |
 | [2](#phase-2-connector-spikes) | Connector spikes: SQL Server, PostgreSQL, MySQL, BigQuery; then a REST API source | 1–2 weeks | **In progress** |
 | [3](#phase-3-configuration-model-and-rendering) | Configuration model, validation, rendering, CLI | 1–2 weeks | Not started |
-| [4](#phase-4-ingestion-runner) | Generic Flink ingestion runner | 2 weeks | Not started |
+| [4](#phase-4-ingestion-runner) | Generic Flink ingestion runner | 2 weeks | First cut written 2026-11-02 (JDBC → Parquet staging); not run on a cluster |
 | [5](#phase-5-end-to-end-runs-through-airflow) | End-to-end runs through Airflow | 2 weeks | Not started |
 | [6](#phase-6-prod-environment-and-cicd) | Prod environment and CI/CD | 1–2 weeks | CI live; deploy pipeline and prod Compose drafted ([ADR-0012](adr/0012-cicd-ssh-deploy.md)); blocked on the prod VMs |
 | [7](#phase-7-hardening-and-extensions) | Hardening and extensions | Ongoing | Not started |
@@ -213,7 +214,7 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 - [ ] Full SQL validator (sqlglot): read-only check, dialect blocklist, unique named columns, table vs query mode
 - [ ] AST-based rewrites: preview, count, bounds, partitioned query (CTE inlining into derived tables, `ORDER BY` removal)
 - [ ] Preflight against live sources: schema introspection, type mapping, bounds, `COUNT(*)`, BigQuery dry-run
-- [ ] Renderer: resolved job spec + Flink submission request
+- [ ] Renderer: Flink submission request (the arguments for the runner; the runner reads the YAML files itself, no resolved spec)
 - [ ] `ingestctl validate | preflight | render`
 - [ ] Golden tests: `tests/golden/<case>/{job.yaml, expected/}` for each source and both sinks
 - [ ] CI: lint, unit tests, validation of every file in `pipelines/connections/` and `pipelines/jobs/`, including file name = `name`. *Lint, types, builds and file validation run in `.github/workflows/ci.yml` since 2026-10-26; unit tests to add*
@@ -235,15 +236,15 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 
 ## Phase 4: Ingestion runner
 
-**Goal:** one generic Flink job that executes any resolved job spec.
+**Goal:** one generic Flink job that executes any job file, read as merged together with its connection and the templates.
 
 ### Checklist
 
-- [ ] `code/runner/` Python package (PyFlink 1.20, Python 3.11), Table API and SQL only
-- [ ] Spec loader and secret resolution (`env://`, later `kv://`) when the job graph is built
-- [ ] Table mode and query mode (JDBC connector over a table or a derived table), BigQuery source
-- [ ] Audit columns `ingest_date`, `_ingest_run_id`, `_ingested_at`
-- [ ] Parquet writer to staging (filesystem connector); written rows counted from Parquet footers by the publisher
+- [ ] `code/runner/` Python package (PyFlink 1.20, Python 3.11), Table API and SQL only. *First cut written 2026-11-02 (JDBC → Parquet staging); not run on a cluster yet*
+- [ ] Loader of the job, its connection and the templates, and secret resolution (`env://`, later `kv://`) when the job graph is built. *Written 2026-11-02; no resolved spec (ADR-0010 update)*
+- [ ] Table mode and query mode (JDBC connector over a table or a derived table), BigQuery source. *JDBC over a derived table written; BigQuery to do*
+- [x] Audit columns `ingest_date`, `_ingest_run_id`, `_ingested_at`
+- [ ] Parquet writer to staging (filesystem connector); written rows counted from Parquet footers by the publisher. *Writer written, writes `_staging/<run_id>/`; publisher in Phase 5*
 - [ ] Prometheus metrics reporter
 - [ ] JobManager image with Python, PyFlink and the runner; connectors and drivers in the Flink image; TaskManager image unchanged
 - [ ] `ingestctl submit` against the non-prod session cluster (Flink REST)
@@ -348,6 +349,7 @@ Prioritized after Phase 6 based on demand:
 | Delta: full overwrite or history? | Keep history, partitioned by `ingest_date`; re-run replaces the day | 2026-10-21 |
 | Can users write free-form SQL? | Yes, read-only, including the data team ([ADR-0005](adr/0005-free-form-sql.md)) | 2026-10-21 |
 | Runner language? | PyFlink, Table API and SQL only, so future maintainers only need Python ([ADR-0010](adr/0010-pyflink-runner.md)) | 2026-10-22 |
+| Does the runner need a resolved job spec with a `spec_version`? | No: it reads the merged job and connection files and the templates directly; template versions (`mysql@1`) version the contract ([ADR-0010](adr/0010-pyflink-runner.md) update, [ADR-0017](adr/0017-ui-opens-pull-requests-on-orchestration.md)) | 2026-11-02 |
 | Where does Flink run? | Standalone session cluster: JobManager with Airflow on VM 1, TaskManagers on VM 2; no Kubernetes ([ADR-0007](adr/0007-flink-standalone-session-cluster.md)) | 2026-10-22 |
 | How are runs scheduled and triggered? | Airflow from Phase 1, one DAG `ingest__<name>` per job file; on-demand runs also go through Airflow ([ADR-0008](adr/0008-airflow-dag-per-job.md)) | 2026-10-22 |
 | Is there an existing Airflow to integrate with? | No; the platform runs its own Airflow on VM 1 | 2026-10-22 |

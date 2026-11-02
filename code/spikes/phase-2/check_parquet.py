@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 
 def main(root: str) -> None:
+    """Prints the file and row counts, the schemas and the first rows of the Parquet output under ``root``."""
     files = sorted(Path(root).rglob("*.parquet")) or sorted(p for p in Path(root).rglob("part-*") if p.is_file())
     if not files:
         sys.exit(f"No Parquet files under {root}")

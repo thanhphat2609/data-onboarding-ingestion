@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { useInvalidFiles, useJobs } from '@/api/hooks'
 import type { JobSummary } from '@/api/types'
 import { PageHeader } from '@/components/page-header'
-import { Blurred, PendingBadge, PendingRow } from '@/components/pending-row'
+import { Dimmed, InactiveRow, StatusBadge } from '@/components/inactive-row'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -65,6 +65,7 @@ export function JobsPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="pl-4">Job</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Connection</TableHead>
               <TableHead>Schedule</TableHead>
               <TableHead>Destination</TableHead>
@@ -75,7 +76,7 @@ export function JobsPage() {
             {jobs.isPending &&
               [0, 1, 2].map((i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={5} className="pl-4">
+                  <TableCell colSpan={6} className="pl-4">
                     <Skeleton className="h-8 w-full" />
                   </TableCell>
                 </TableRow>
@@ -83,7 +84,7 @@ export function JobsPage() {
             {jobs.data?.map((summary) => <JobRow key={summary.job.name} summary={summary} />)}
             {jobs.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
                   <WorkflowIcon className="mx-auto mb-2 size-6" />
                   No jobs yet. Create one; its pull request creates the DAG.
                 </TableCell>
@@ -103,34 +104,32 @@ function JobRow({ summary }: { summary: JobSummary }) {
 
   if (summary.pending) {
     return (
-      <PendingRow kind="job" pull={summary.pending}>
+      <InactiveRow kind="job" pull={summary.pending}>
         <TableCell className="pl-4">
-          <div className="flex items-center gap-2">
-            <Blurred>
-              <span className="font-medium">{job.name}</span>
-            </Blurred>
-            <PendingBadge />
-          </div>
-          <Blurred>
+          <Dimmed>
+            <span className="font-medium">{job.name}</span>
             <div className="font-mono text-xs text-muted-foreground">{dagId}</div>
-          </Blurred>
+          </Dimmed>
         </TableCell>
         <TableCell>
-          <Blurred>
+          <StatusBadge active={false} />
+        </TableCell>
+        <TableCell>
+          <Dimmed>
             <Badge variant="secondary">{job.connection}</Badge>
-          </Blurred>
+          </Dimmed>
         </TableCell>
         <TableCell>
-          <Blurred>{describeSchedule(job.schedule)}</Blurred>
+          <Dimmed>{describeSchedule(job.schedule)}</Dimmed>
         </TableCell>
         <TableCell>
-          <Blurred>
+          <Dimmed>
             <div className="font-mono text-xs">{String(job.sink.params.path ?? '')}</div>
             <div className="text-xs text-muted-foreground">{job.sink.template}</div>
-          </Blurred>
+          </Dimmed>
         </TableCell>
         <TableCell />
-      </PendingRow>
+      </InactiveRow>
     )
   }
 
@@ -141,6 +140,9 @@ function JobRow({ summary }: { summary: JobSummary }) {
           {job.name}
         </Link>
         <div className="font-mono text-xs text-muted-foreground">{dagId}</div>
+      </TableCell>
+      <TableCell>
+        <StatusBadge active />
       </TableCell>
       <TableCell>
         <Badge variant="secondary">{job.connection}</Badge>

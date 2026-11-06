@@ -181,3 +181,21 @@ def test_single_table_queries_give_the_table_to_the_connector() -> None:
 def test_other_queries_say_what_is_supported(query: str) -> None:
     with pytest.raises(ValueError, match="plain `SELECT"):
         single_table(query, "postgres")
+
+
+def test_final_target_writes_to_the_table_path_and_overwrites_the_partition(
+    pipelines: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SHOP_MYSQL_RO_PASSWORD", "x")
+    columns = [Column("order_id", "BIGINT")]
+
+    final = plan_for(pipelines, target="final")
+    assert final.staging_uri == "abfss://raw@acct.dfs.core.windows.net/parquet/shop/shop/orders"
+    assert insert_sql(final, columns).startswith("INSERT OVERWRITE dst SELECT")
+
+    staged = plan_for(pipelines)
+    assert staged.staging_uri.endswith("/_staging/run-1")
+    assert insert_sql(staged, columns).startswith("INSERT INTO dst SELECT")
+
+    with pytest.raises(SpecError, match="staging or final"):
+        plan_for(pipelines, target="elsewhere")

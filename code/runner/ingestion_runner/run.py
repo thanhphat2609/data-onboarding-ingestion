@@ -28,6 +28,12 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--run-id", default=f"manual-{uuid.uuid4().hex[:12]}")
     parser.add_argument("--ingest-date", default=dt.datetime.now(dt.UTC).date().isoformat())
     parser.add_argument("--output-root", help="replaces the sink's storage root, e.g. file:///opt/ingestion/spike-out")
+    parser.add_argument(
+        "--target",
+        choices=["staging", "final"],
+        default="staging",
+        help="staging: _staging/<run_id>/ (Phase 5 publishes it); final: the table path, replacing the partition",
+    )
     parser.add_argument("--no-wait", action="store_true", help="return once the job is submitted")
     return parser.parse_args(argv)
 
@@ -44,6 +50,7 @@ def run(argv: list[str] | None = None) -> None:
         args.run_id,
         args.ingest_date,
         args.output_root,
+        target=args.target,
     )
     columns = jdbc_meta.describe(plan)
     bounds = jdbc_meta.bounds(plan, columns)

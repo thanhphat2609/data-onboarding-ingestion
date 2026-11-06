@@ -23,4 +23,6 @@ services:
         taskmanager.data.port: 6121
         taskmanager.numberOfTaskSlots: ${TASKMANAGER_SLOTS:-8}
         taskmanager.memory.process.size: ${TASKMANAGER_MEMORY:-8g}
+        # ADLS Gen2 account key for abfss://, same as on the JobManager.
+        fs.azure.account.key.${ADLS_STORAGE_ACCOUNT:?}.dfs.core.windows.net: ${ADLS_ACCOUNT_KEY:?}
     restart: unless-stopped

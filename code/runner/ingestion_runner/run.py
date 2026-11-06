@@ -9,6 +9,7 @@ import os
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from ingestion_runner import flink_sql, jdbc_meta
 from ingestion_runner.plan import build_plan
@@ -56,7 +57,7 @@ def run(argv: list[str] | None = None) -> None:
     started = time.monotonic()
     result = env.execute_sql(flink_sql.insert_sql(plan, columns))
     client = result.get_job_client()
-    summary = {
+    summary: dict[str, Any] = {
         "job": plan.job_name,
         "run_id": plan.run_id,
         "ingest_date": plan.ingest_date,

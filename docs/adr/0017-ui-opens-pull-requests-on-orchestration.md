@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-01
 - Amends: [ADR-0014](0014-prod-save-flow.md) (the pull request targets another repository), [ADR-0016](0016-airflow-moves-to-orchestration.md) (`pipelines/` and the Airflow client leave)
+- Amended by: [ADR-0018](0018-saves-live-in-their-pull-request.md) (the working copy is emptied once the pull request is open; pending saves are listed)
 
 ## Context
 

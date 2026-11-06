@@ -141,7 +141,7 @@ A standalone session cluster ([ADR-0007](adr/0007-flink-standalone-session-clust
   - `kv://<vault>/<secret>` in prod: Azure Key Vault, accessed with the VM's managed identity if the VMs run on Azure (open question, Phase 6). Until then prod uses `env://` too: the values are GitHub secrets that the Deploy workflow writes into `sources.env` on VM 1 ([ADR-0013](adr/0013-prod-settings-in-github.md)).
 - The runner resolves references when it builds the job graph. Secret values never appear in program arguments, the Flink web UI or Airflow logs.
 - Every source connection uses a dedicated **read-only** database principal. This is the primary security control; SQL validation is a second layer.
-- ADLS Gen2 access: a service principal from Codespaces secrets in non-prod; managed identity in prod (to be confirmed).
+- ADLS Gen2 access: a service principal from Codespaces secrets in non-prod; managed identity in prod (to be confirmed). The prototype uses the account key in the Flink configuration of both VMs, and needs an account with soft delete off ([ADR-0019](adr/0019-runner-on-the-prototype-cluster.md)).
 - UI sign-in with Entra ID SSO before the prod UI is exposed (Phase 6).
 
 ### 3.8 Observability
@@ -263,7 +263,7 @@ abfss://raw@<account>.dfs.core.windows.net/
 ```
 
 - **Partitioning**: every table is partitioned by `ingest_date`, so the lake keeps one snapshot per ingest day. A re-run for the same `ingest_date` replaces only that partition.
-- **Parquet**: the runner writes to staging. The publisher replaces the target `ingest_date=` directory with a directory rename (atomic on ADLS Gen2 with hierarchical namespace), then writes `_SUCCESS` and `_manifest.json`.
+- **Parquet**: the runner writes to staging. The publisher replaces the target `ingest_date=` directory with a directory rename (atomic on ADLS Gen2 with hierarchical namespace), then writes `_SUCCESS` and `_manifest.json`. *Until the publisher exists (Phase 5), the runner writes the table path directly with `INSERT OVERWRITE`, which replaces the partition without the atomic rename ([ADR-0019](adr/0019-runner-on-the-prototype-cluster.md)).*
 - **Delta** (preferred option, confirmed in the Phase 2 spikes): the runner writes Parquet files under the table root in a run-specific directory. The publisher then makes a **single Delta commit** that adds the new files and removes the previous files of that `ingest_date`. Files are invisible to readers until that commit. The fallback is the `delta-flink` sink with append plus a cleanup delete.
 - **Audit columns** on every row: `ingest_date`, `_ingest_run_id`, `_ingested_at`.
 - The storage account **must** have hierarchical namespace enabled. Data (`raw`) and Flink system files (`flink`: history archive) live in separate containers.

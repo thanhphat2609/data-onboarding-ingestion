@@ -22,7 +22,9 @@ Statuses: `Proposed` → `Accepted` | `Rejected`, later optionally `Superseded b
 | [0014](0014-prod-save-flow.md) | In prod, the UI saves through a pull request; source passwords are set by hand until Key Vault | Proposed |
 | [0015](0015-rest-api-source-via-redpanda.md) | REST API sources: Airflow fetches into Redpanda, Flink reads the run's offset range as a bounded table | Proposed |
 | [0016](0016-airflow-moves-to-orchestration.md) | Airflow moves to data-onboarding-orchestration | Accepted |
-| [0017](0017-ui-opens-pull-requests-on-orchestration.md) | The Web UI opens pull requests on the orchestration repository; this repository keeps the runner | Accepted |
+| [0017](0017-ui-opens-pull-requests-on-orchestration.md) | The Web UI opens pull requests on the orchestration repository; this repository keeps the runner | Accepted (amended by 0018) |
+| [0018](0018-saves-live-in-their-pull-request.md) | A save lives only in its pull request; the lists show it as pending | Accepted |
+| [0019](0019-runner-on-the-prototype-cluster.md) | The runner on the prototype cluster: what it reads, where it writes, how it is started | Accepted (prototype) |
 
 ## Template
 

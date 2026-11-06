@@ -6,7 +6,7 @@ Self-service ingestion platform built on Apache Flink. The DE team onboards a so
 
 ## Status
 
-**Phase 1: Non-prod environment, Web UI and Airflow.** The Web UI runs against a mock API; the non-prod Compose stack is in `infrastructure/`. See the [roadmap](docs/roadmap.md).
+**Phase 1 is closed; the Phase 2 and 4 pieces ran together on a prototype.** In prod, on two Azure VMs (stopped between sessions), a job created in the Web UI became an Airflow DAG whose run copied a MySQL table to Parquet on ADLS Gen2 ([ADR-0019](docs/adr/0019-runner-on-the-prototype-cluster.md)). Saves live in their pull request until merged ([ADR-0018](docs/adr/0018-saves-live-in-their-pull-request.md)). See the [roadmap](docs/roadmap.md) for what is still open (publisher, verify, query mode).
 
 ## Repository layout
 

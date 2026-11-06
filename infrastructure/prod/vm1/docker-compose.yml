@@ -21,6 +21,16 @@ services:
     mem_limit: 64m
     restart: unless-stopped
 
+  # The API (uid 1000) must be able to write its working copy. A named volume keeps the owner it was created with
+  # (root, when the image had no such directory), so fix it on every start; the API refuses to start otherwise.
+  api-pipelines-init:
+    image: ingestion-api:prod
+    user: root
+    entrypoint: ["sh", "-c", "mkdir -p /workspace/pipelines/connections /workspace/pipelines/jobs && chown -R 1000:1000 /workspace/pipelines"]
+    volumes:
+      - api-pipelines:/workspace/pipelines
+    restart: "no"
+
   api:
     build:
       context: ../../..
@@ -39,6 +49,9 @@ services:
       # Working copy of what was saved; the files Airflow runs are in data-onboarding-orchestration.
       - api-pipelines:/workspace/pipelines
       - ../../../code/templates:/workspace/code/templates:ro
+    depends_on:
+      api-pipelines-init:
+        condition: service_completed_successfully
     networks: [default, platform]
     mem_limit: 512m
     restart: unless-stopped

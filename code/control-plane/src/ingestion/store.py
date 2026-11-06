@@ -20,7 +20,8 @@ from ingestion.settings import Settings
 from ingestion.specs import InvalidSpec, validate_connection, validate_job
 from ingestion.templates import TemplateRegistry
 
-# Called with a file's path relative to pipelines/ and its text, after validation and before the write; it may raise.
+# Called with a file's path relative to pipelines/ and its text, after validation and the local write; it may raise,
+# and the local write is then undone.
 Publish = Callable[[str, str], None]
 
 # Key order in written files, matching docs/configuration-spec.md.
@@ -34,6 +35,10 @@ class NotFound(LookupError):
 
 class Conflict(Exception):
     pass
+
+
+class StorageError(Exception):
+    """The working copy can't be written; the message says what to check."""
 
 
 @dataclass(frozen=True)
@@ -168,7 +173,10 @@ class ConfigStore:
         keys: list[str],
         publish: Publish | None,
     ) -> None:
-        """Writes one file: new names must not exist, existing ones must; ``publish`` runs before the write."""
+        """Writes one file: new names must not exist, existing ones must.
+
+        ``publish`` runs after the write; if it raises, the write is undone.
+        """
         name = document["name"]
         path = directory / f"{name}.yaml"
         with self._lock:
@@ -177,11 +185,42 @@ class ConfigStore:
             if not is_new and not path.exists():
                 raise NotFound(f'{kind} "{name}" not found; names can\'t be changed after creation')
             text = to_yaml(document, keys)
+            previous = path.read_text(encoding="utf-8") if path.exists() else None
+            # The local write goes first: it is the step that can fail for local reasons (permissions of the mounted
+            # working copy), and a pull request can't be taken back once it is open.
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                _write_atomic(path, text)
+            except OSError as error:
+                raise StorageError(
+                    f"Can't write {path} ({error.strerror or error}); "
+                    "nothing was saved and no pull request was opened. "
+                    "Check that the API user can write to the pipelines directory."
+                ) from None
             if publish:
-                # Before the write: when the pull request can't be opened, nothing is saved.
-                publish(f"{directory.name}/{path.name}", text)
-            directory.mkdir(parents=True, exist_ok=True)
-            _write_atomic(path, text)
+                try:
+                    publish(f"{directory.name}/{path.name}", text)
+                except BaseException:
+                    # When the pull request can't be opened, nothing is saved.
+                    if previous is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        _write_atomic(path, previous)
+                    raise
+
+    def check_writable(self) -> None:
+        """Raises StorageError at startup unless the connections and jobs directories can be written."""
+        for directory in (self.settings.connections_dir, self.settings.jobs_dir):
+            probe = directory / ".write-check"
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                probe.write_text("", encoding="utf-8")
+                probe.unlink()
+            except OSError as error:
+                raise StorageError(
+                    f"{directory} isn't writable ({error.strerror or error}). Create pipelines/ on the host before "
+                    "starting (infrastructure/non-prod/bootstrap.sh does), or Docker creates it owned by root."
+                ) from None
 
     def save_connection(
         self, connection: dict[str, Any], is_new: bool, publish: Publish | None = None

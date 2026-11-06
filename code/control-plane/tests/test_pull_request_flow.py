@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from fastapi.testclient import TestClient
 from ingestion.api import create_app
 from ingestion.github import PullRequestPublisher
 from ingestion.settings import REPO_ROOT, Settings
+from ingestion.store import StorageError
 
 CONNECTION = {
     "kind": "Connection",
@@ -127,7 +129,39 @@ def test_github_failure_saves_nothing(tmp_path: Path) -> None:
 
     assert response.status_code == 502
     assert "GITHUB_TOKEN" in response.json()["detail"]
-    assert not (tmp_path / "pipelines" / "connections").exists()
+    assert not (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").exists()
+
+
+def test_github_failure_keeps_the_previous_file(tmp_path: Path) -> None:
+    github = FakeGitHub()
+    api = client(tmp_path, github)
+    api.post("/api/connections", json=CONNECTION)
+    github.fail_with = 401
+
+    response = api.put("/api/connections/sales-postgresql", json={**CONNECTION, "owner": "other-team"})
+
+    assert response.status_code == 502
+    saved = (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").read_text()
+    assert "owner: data-team" in saved
+
+
+def test_unwritable_working_copy_opens_no_pull_request(tmp_path: Path) -> None:
+    github = FakeGitHub()
+    api = client(tmp_path, github)
+    # The directory turns into a file after startup: the write fails like it does on a mount that became read-only.
+    shutil.rmtree(tmp_path / "pipelines")
+    (tmp_path / "pipelines").write_text("not a directory")
+    response = api.post("/api/connections", json=CONNECTION)
+
+    assert response.status_code == 500
+    assert "nothing was saved and no pull request was opened" in response.json()["detail"]
+    assert github.pulls == []
+
+
+def test_unwritable_working_copy_stops_the_api_at_startup(tmp_path: Path) -> None:
+    (tmp_path / "pipelines").write_text("not a directory")
+    with pytest.raises(StorageError, match="isn't writable"):
+        client(tmp_path, FakeGitHub())
 
 
 def test_pull_request_mode_needs_a_token(tmp_path: Path) -> None:

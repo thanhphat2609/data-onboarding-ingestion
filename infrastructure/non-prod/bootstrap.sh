@@ -52,6 +52,10 @@ done < <(grep -oE '^[A-Z0-9_]+' sources.env.example)
 # Written by Airflow (uid 50000, data-onboarding-orchestration mounts it), read by the Flink JobManager.
 mkdir -p data/runs
 chmod 777 data/runs
+# The Web UI's working copy, written by the API (uid 1000). Docker would create a missing bind-mount source owned by
+# root, and every save would then fail after its pull request was opened (the API refuses to start in that case).
+mkdir -p ../../pipelines/connections ../../pipelines/jobs
+chmod -R a+rwX ../../pipelines
 # Phase 2 spike output, written by the Flink TaskManager (uid 9999).
 mkdir -p data/spike-out
 chmod 777 data/spike-out

@@ -10,15 +10,17 @@ Run: ``uvicorn ingestion.api:create_app --factory --host 0.0.0.0 --port 8000``
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Annotated, Any
 
+import yaml
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ingestion.github import GitHubError, PullRequest, PullRequestPublisher
+from ingestion.github import GitHubError, PendingFile, PullRequest, PullRequestPublisher
 from ingestion.settings import Settings
 from ingestion.sources import SourceClient, SourceError, client_for
 from ingestion.specs import InvalidSpec, validate_connection
@@ -27,6 +29,7 @@ from ingestion.store import ConfigStore, Conflict, NotFound, Publish, StorageErr
 from ingestion.templates import Template, TemplateNotFound, TemplateRegistry
 
 Document = dict[str, Any]
+PENDING_CACHE_SECONDS = 15
 logger = logging.getLogger(__name__)
 
 
@@ -134,6 +137,7 @@ def create_app(
                     branch_prefix=f"ui/{kind}-{name}",
                 )
             )
+            pending_cache.clear()  # the next list shows this pull request
 
         return publish, opened
 
@@ -159,12 +163,48 @@ def create_app(
         pull = opened[0]
         return {**saved, "pullRequest": {"number": pull.number, "url": pull.url, "branch": pull.branch}}
 
+    # --- saves waiting for their merge ---------------------------------------------------------------
+    # The pull request is the only record of a save, so a connection or job that isn't merged yet exists only there.
+    # The lists show it (marked `pending`) so nobody saves it twice; nothing can use it until the merge.
+
+    pending_cache: dict[str, tuple[float, list[PendingFile]]] = {}
+
+    def pending_files(kind: str) -> list[PendingFile]:
+        """Open pull requests' files of one kind (``connection`` or ``job``); empty if GitHub can't be asked."""
+        if publisher is None:
+            return []
+        cached = pending_cache.get(kind)
+        if cached and time.monotonic() - cached[0] < PENDING_CACHE_SECONDS:
+            return cached[1]
+        try:
+            files = publisher.pending_files(f"ui/{kind}-", f"{settings.repository_pipelines_path}/{kind}s/")
+        except GitHubError:
+            logger.exception("Can't list the open pull requests; the lists show merged files only")
+            files = []
+        pending_cache[kind] = (time.monotonic(), files)
+        return files
+
+    def pending_documents(kind: str, merged: set[str]) -> list[tuple[Document, Document]]:
+        """(document, pull request) of the saves waiting for a merge, without the names that are already merged."""
+        documents: list[tuple[Document, Document]] = []
+        for file in pending_files(kind):
+            try:
+                document = yaml.safe_load(file.text)
+            except yaml.YAMLError:
+                continue
+            if not isinstance(document, dict) or document.get("name") in merged:
+                continue
+            documents.append((document, {"number": file.pull.number, "url": file.pull.url, "branch": file.pull.branch}))
+        return documents
+
     # --- connections ---------------------------------------------------------------------------------
 
     @app.get("/api/connections")
     def list_connections() -> list[Document]:
-        """All valid connections of the working copy."""
-        return store.list_connections()
+        """All valid connections, then the ones whose pull request is still open, marked ``pending``."""
+        merged = store.list_connections()
+        waiting = pending_documents("connection", {str(c["name"]) for c in merged})
+        return merged + [{**document, "pending": pull} for document, pull in waiting]
 
     @app.get("/api/connections/{name}")
     def get_connection(name: str) -> Document:
@@ -202,8 +242,12 @@ def create_app(
 
     @app.get("/api/jobs")
     def list_jobs() -> list[Document]:
-        """All valid jobs with their Airflow DAG ids."""
-        return [{"job": job, "dagId": dag_id(job["name"])} for job in store.list_jobs()]
+        """All valid jobs with their Airflow DAG ids, then the ones whose pull request is still open (``pending``)."""
+        merged = store.list_jobs()
+        waiting = pending_documents("job", {str(j["name"]) for j in merged})
+        return [{"job": job, "dagId": dag_id(job["name"])} for job in merged] + [
+            {"job": document, "dagId": dag_id(str(document["name"])), "pending": pull} for document, pull in waiting
+        ]
 
     @app.get("/api/jobs/{name}")
     def get_job(name: str) -> Document:

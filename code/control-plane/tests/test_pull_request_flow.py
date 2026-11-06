@@ -41,6 +41,7 @@ class FakeGitHub:
         self.branches: dict[str, dict[str, str]] = {}
         self.pulls: list[dict[str, Any]] = []
         self.fail_with: int | None = None
+        self.merged: set[str] = set()  # branches of pull requests that are no longer open
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer t0ken"
@@ -57,11 +58,32 @@ class FakeGitHub:
             name = path.removeprefix("/contents/")
             if request.method == "GET":
                 branch = self.branches[request.url.params["ref"]]
-                return httpx.Response(200, json={"sha": "blob1"}) if name in branch else httpx.Response(404, json={})
+                if name not in branch:
+                    return httpx.Response(404, json={})
+                content = base64.b64encode(branch[name].encode()).decode()
+                return httpx.Response(200, json={"sha": "blob1", "content": content})
             if name in self.branches[body["branch"]]:
                 assert body["sha"] == "blob1", "replacing a file needs its current sha"
             self.branches[body["branch"]][name] = base64.b64decode(body["content"]).decode()
             return httpx.Response(201, json={})
+        if path == "/pulls" and request.method == "GET":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "number": n,
+                        "html_url": f"https://github.com/acme/orchestration/pull/{n}",
+                        "head": {"ref": p["head"]},
+                    }
+                    for n, p in enumerate(self.pulls, start=1)
+                    if p["head"] not in self.merged
+                ],
+            )
+        if path.startswith("/pulls/") and path.endswith("/files"):
+            branch = self.pulls[int(path.split("/")[2]) - 1]["head"]
+            return httpx.Response(
+                200, json=[{"filename": f, "status": "added"} for f in self.branches[branch] if f not in self.files]
+            )
         if path == "/pulls":
             self.pulls.append(body)
             number = len(self.pulls)
@@ -214,3 +236,55 @@ def test_disk_mode_has_no_pull_request(tmp_path: Path) -> None:
 
     assert response.status_code == 201
     assert "pullRequest" not in response.json()
+
+
+def test_saved_connection_stays_visible_as_pending_until_its_pull_request_is_merged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("ingestion.api.PENDING_CACHE_SECONDS", 0)
+    github = FakeGitHub()
+    api = client(tmp_path, github)
+    pull = api.post("/api/connections", json=CONNECTION).json()["pullRequest"]
+
+    listed = api.get("/api/connections").json()
+
+    assert [c["name"] for c in listed] == ["sales-postgresql"]
+    assert listed[0]["pending"] == pull
+    assert not (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").exists()
+
+    github.merged.add(pull["branch"])  # no longer an open pull request
+    assert api.get("/api/connections").json() == []
+
+
+def test_merged_connection_is_not_listed_twice_while_its_update_is_open(tmp_path: Path) -> None:
+    github = FakeGitHub()
+    api = client(tmp_path, github, {"connections/sales-postgresql.yaml": yaml_text(CONNECTION)})
+    api.put("/api/connections/sales-postgresql", json={**CONNECTION, "owner": "other-team"})
+
+    listed = api.get("/api/connections").json()
+
+    assert [c["name"] for c in listed] == ["sales-postgresql"]
+    assert "pending" not in listed[0]
+
+
+def test_a_job_with_an_open_pull_request_is_listed_as_pending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ingestion.api.PENDING_CACHE_SECONDS", 0)
+    github = FakeGitHub()
+    github.pulls.append({"head": "ui/job-shop-orders-20261106-090000"})
+    github.branches["ui/job-shop-orders-20261106-090000"] = {
+        "pipelines/jobs/shop-orders.yaml": "kind: IngestionJob\nname: shop-orders\nowner: de-team\nconnection: x\n"
+    }
+    listed = client(tmp_path, github).get("/api/jobs").json()
+
+    assert listed[0]["job"]["name"] == "shop-orders"
+    assert listed[0]["dagId"] == "ingest__shop-orders"
+    assert listed[0]["pending"]["number"] == 1
+
+
+def test_github_failure_does_not_break_the_lists(tmp_path: Path) -> None:
+    github = FakeGitHub()
+    github.fail_with = 401
+    api = client(tmp_path, github)
+
+    assert api.get("/api/connections").json() == []
+    assert api.get("/api/jobs").json() == []

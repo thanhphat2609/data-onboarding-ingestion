@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { useInvalidFiles, useJobs } from '@/api/hooks'
 import type { JobSummary } from '@/api/types'
 import { PageHeader } from '@/components/page-header'
+import { Blurred, PendingBadge, PendingRow } from '@/components/pending-row'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -99,6 +100,39 @@ function JobRow({ summary }: { summary: JobSummary }) {
   const { job, dagId } = summary
   const navigate = useNavigate()
   const editUrl = `/jobs/${job.name}/edit`
+
+  if (summary.pending) {
+    return (
+      <PendingRow kind="job" pull={summary.pending}>
+        <TableCell className="pl-4">
+          <div className="flex items-center gap-2">
+            <Blurred>
+              <span className="font-medium">{job.name}</span>
+            </Blurred>
+            <PendingBadge />
+          </div>
+          <Blurred>
+            <div className="font-mono text-xs text-muted-foreground">{dagId}</div>
+          </Blurred>
+        </TableCell>
+        <TableCell>
+          <Blurred>
+            <Badge variant="secondary">{job.connection}</Badge>
+          </Blurred>
+        </TableCell>
+        <TableCell>
+          <Blurred>{describeSchedule(job.schedule)}</Blurred>
+        </TableCell>
+        <TableCell>
+          <Blurred>
+            <div className="font-mono text-xs">{String(job.sink.params.path ?? '')}</div>
+            <div className="text-xs text-muted-foreground">{job.sink.template}</div>
+          </Blurred>
+        </TableCell>
+        <TableCell />
+      </PendingRow>
+    )
+  }
 
   return (
     <TableRow>

@@ -38,9 +38,13 @@ export interface PullRequestRef {
 
 export type Saved<T> = T & { pullRequest?: PullRequestRef }
 
+/** In a list: `pending` is set while the pull request of the save is open (nothing can use the item yet). */
+export type Listed<T> = T & { pending?: PullRequestRef }
+
 export interface JobSummary {
   job: IngestionJob
   dagId: string
+  pending?: PullRequestRef
 }
 
 export interface InvalidFile {
@@ -67,7 +71,7 @@ export interface QueryPreview {
 
 export interface IngestionApi {
   readonly mode: 'mock' | 'http'
-  listConnections(): Promise<Connection[]>
+  listConnections(): Promise<Listed<Connection>[]>
   getConnection(name: string): Promise<Connection>
   saveConnection(connection: Connection, isNew: boolean): Promise<Saved<Connection>>
   testConnection(connection: Connection): Promise<ConnectionTestResult>

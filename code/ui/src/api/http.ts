@@ -7,6 +7,7 @@ import type {
   IngestionJob,
   InvalidFile,
   JobSummary,
+  Listed,
   QueryPreview,
   Saved,
   SqlValidation,
@@ -38,7 +39,7 @@ const segment = encodeURIComponent
 export const httpApi: IngestionApi = {
   mode: 'http',
 
-  listConnections: () => request<Connection[]>('GET', '/connections'),
+  listConnections: () => request<Listed<Connection>[]>('GET', '/connections'),
 
   getConnection: (name) => request<Connection>('GET', `/connections/${segment(name)}`),
 

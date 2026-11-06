@@ -19,6 +19,8 @@ class Settings:
     github_repository: str
     github_base_branch: str
     repository_pipelines_path: str
+    # Read-only checkout of the orchestration repository's pipelines/ (what Airflow runs); the UI lists it too.
+    reference_pipelines_dir: Path | None = None
 
     @property
     def connections_dir(self) -> Path:
@@ -41,4 +43,7 @@ class Settings:
             github_repository=os.environ.get("ORCHESTRATION_REPOSITORY", "thanhphat2609/data-onboarding-orchestration"),
             github_base_branch=os.environ.get("ORCHESTRATION_BASE_BRANCH", "main"),
             repository_pipelines_path=os.environ.get("ORCHESTRATION_PIPELINES_PATH", "pipelines"),
+            reference_pipelines_dir=Path(os.environ["INGESTION_REFERENCE_PIPELINES_DIR"])
+            if os.environ.get("INGESTION_REFERENCE_PIPELINES_DIR")
+            else None,
         )

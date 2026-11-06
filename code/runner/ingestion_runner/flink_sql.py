@@ -108,7 +108,8 @@ def insert_sql(plan: Plan, columns: list[Column]) -> str:
     """The ``INSERT`` from ``src`` into ``dst``; the audit values are literals, so the TaskManagers run no Python."""
     names = ", ".join(quote(column.name) for column in columns)
     audit = f"'{plan.ingest_date}', '{plan.run_id}', CAST('{plan.ingested_at}' AS TIMESTAMP(3))"
-    return f"INSERT INTO dst SELECT {names}, {audit} FROM src"
+    verb = "INSERT OVERWRITE" if plan.overwrite else "INSERT INTO"
+    return f"{verb} dst SELECT {names}, {audit} FROM src"
 
 
 def _columns(columns: list[Column]) -> str:

@@ -41,7 +41,8 @@ class Plan:
     partition_num: int
     parallelism: int | None
     compression: str
-    staging_uri: str
+    staging_uri: str  # where the run writes: _staging/<run_id> (staging) or the table path (final)
+    overwrite: bool = False  # final target: INSERT OVERWRITE replaces the ingest_date partition, so a rerun is safe
 
 
 def render(text: str, values: dict[str, Any]) -> str:
@@ -107,6 +108,7 @@ def build_plan(
     ingest_date: str,
     output_root: str | None = None,
     now: dt.datetime | None = None,
+    target: str = "staging",
 ) -> Plan:
     """Reads the job, its connection and the templates; resolves the password from its ``env://`` reference.
 
@@ -135,7 +137,17 @@ def build_plan(
     if read.get("snapshot_column"):
         raise SpecError("source.read.snapshot_column is not supported by the runner yet")
 
-    if output_root:
+    if target not in ("staging", "final"):
+        raise SpecError(f'target "{target}" must be staging or final')
+    if target == "final":
+        # Straight to the table path; the partition is replaced, not appended to (no publish step yet, ADR-0004).
+        root = (
+            f"{output_root.rstrip('/')}/parquet/{sink_params['path']}"
+            if output_root
+            else render(sink["uri"], sink_params)
+        )
+        staging_uri = root
+    elif output_root:
         staging_uri = f"{output_root.rstrip('/')}/_staging/{run_id}"
     else:
         staging_uri = render(sink["staging_uri"], {**sink_params, "run_id": run_id})
@@ -159,4 +171,5 @@ def build_plan(
         parallelism=(job.get("runtime") or {}).get("parallelism"),
         compression=str(sink_params["compression"]).upper(),
         staging_uri=staging_uri,
+        overwrite=target == "final",
     )

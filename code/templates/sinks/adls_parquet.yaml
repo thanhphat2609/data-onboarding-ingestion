@@ -4,6 +4,7 @@ version: 1
 format: parquet
 uri: "abfss://{{ container }}@{{ storage_account }}.dfs.core.windows.net/parquet/{{ path }}"
 # Where the runner writes (ADR-0004); the publisher renames <staging>/ingest_date=<date> into the table path.
+# Until the publisher exists the runner's `--target final` writes `uri` directly, replacing the partition (ADR-0019).
 staging_uri: "abfss://{{ container }}@{{ storage_account }}.dfs.core.windows.net/_staging/{{ run_id }}"
 
 params:

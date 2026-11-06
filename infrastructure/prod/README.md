@@ -1,10 +1,13 @@
 # Prod
 
-Two VMs ([ADR-0009](../../docs/adr/0009-environments.md)), deployed by GitHub Actions ([ADR-0012](../../docs/adr/0012-cicd-ssh-deploy.md)). Airflow runs on VM 1 too, deployed by [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration) ([ADR-0016](../../docs/adr/0016-airflow-moves-to-orchestration.md)). **Draft until the VMs exist** (roadmap Phase 6): the Compose files follow the ADRs but have not run yet.
+Two VMs ([ADR-0009](../../docs/adr/0009-environments.md)), deployed by GitHub Actions ([ADR-0012](../../docs/adr/0012-cicd-ssh-deploy.md)). Airflow runs on VM 1 too, deployed by [data-onboarding-orchestration](https://github.com/thanhphat2609/data-onboarding-orchestration) ([ADR-0016](../../docs/adr/0016-airflow-moves-to-orchestration.md)).
+
+**Prototype (2026-11-06):** both stacks ran end to end on two Azure VMs, MySQL → Parquet on ADLS Gen2 ([ADR-0019](../../docs/adr/0019-runner-on-the-prototype-cluster.md)). The VMs are **stopped between sessions to save cost**, so `PROD_DEPLOY_ENABLED` is `false`: set it to `true` after starting them. Still draft for a real prod (roadmap Phase 6): no TLS or SSO, the lake key and the demo passwords are plain GitHub secrets, no agent stack.
 
 ```
 vm1/docker-compose.yml   Web UI, Ingestion API, Flink JobManager, Redpanda
 vm2/docker-compose.yml   Flink TaskManager (host network)
+demo-sources.yml         Demo MySQL (shop) and PostgreSQL (sales) on VM 1; started by hand, never by a deploy
 deploy.sh                Run on a VM by the Deploy workflow: checkout <sha>, build, up, prune
 render_env.py            Used by the Deploy workflow: keys of the *.env.example files + GitHub secrets/variables -> .env, sources.env
 vm1/.env.example, vm1/sources.env.example, vm2/.env.example   every prod setting, by name (ADR-0013)
@@ -41,23 +44,25 @@ Secrets and variables are per repository: set them here, in data-onboarding-agen
 | `PROD_SSH_USER` | `deploy` | Linux user on the VMs, member of the `docker` group |
 | `PROD_VM1_HOST` | `20.198.10.15` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
 | `PROD_VM2_HOST` | `20.198.10.16` or `vm2.dataplatform.example.com` | Address of VM 2 that GitHub's runners can reach |
+| `ADLS_ACCOUNT_KEY` | | Access key of the ADLS Gen2 account the sinks write to; goes into the Flink configuration of both VMs. Rotate it in the portal when the demo is over |
 
 App settings (written into the files on the VMs):
 
 | Name | Required | What it is |
 |---|---|---|
 | `ORCHESTRATION_GITHUB_TOKEN` | yes | Fine-grained token limited to data-onboarding-orchestration, Contents and Pull requests (read and write): the Ingestion API opens a pull request there for every save. Create it under your GitHub account → Settings → Developer settings; renew it before it expires |
-| `CRM_SQLSERVER_RO_PASSWORD`, `SALES_POSTGRES_RO_PASSWORD`, `SHOP_MYSQL_RO_PASSWORD` | yes | Source passwords for `env://` references (`vm1/sources.env`). Every key of [vm1/sources.env.example](vm1/sources.env.example) is required: a new connection with a new `env://` reference adds a line there and a secret here |
+| `CRM_SQLSERVER_RO_PASSWORD`, `SALES_POSTGRES_RO_PASSWORD`, `SHOP_MYSQL_RO_PASSWORD` | yes | Source passwords for `env://` references (`vm1/sources.env`). Every key of [vm1/sources.env.example](vm1/sources.env.example) is required: a new connection with a new `env://` reference adds a line there and a secret here. For the demo sources they equal `DEMO_SOURCES_PASSWORD` of [demo-sources.yml](demo-sources.yml) |
 
 ### Variables (same page → Variables tab → New repository variable)
 
 | Name | Example | What it is |
 |---|---|---|
-| `PROD_DEPLOY_ENABLED` | `true` | Anything else (or unset) turns the Deploy workflow off. Leave unset until the VMs are ready |
+| `PROD_DEPLOY_ENABLED` | `true` | Anything else (or unset) turns the Deploy workflow off. `false` while the VMs are stopped |
 | `PROD_REPO_DIR` | `/opt/data-onboarding-ingestion` | Where the repository is cloned on both VMs (this is also the default) |
 | `PROD_SSH_PORT` | `22` | SSH port of the VMs (default `22`) |
-| `FLINK_JOBMANAGER_ADDRESS` | `10.0.0.4` | **Required.** Private address of VM 1 as seen from VM 2 (used on both VMs) |
-| `FLINK_TASKMANAGER_ADDRESS` | `10.0.0.5` | **Required.** Private address of VM 2 as seen from VM 1 |
+| `FLINK_JOBMANAGER_ADDRESS` | `10.0.0.4` | **Required.** Address of VM 1 as seen from VM 2 (used on both VMs). The public address when the VMs are in different virtual networks, as in the prototype |
+| `FLINK_TASKMANAGER_ADDRESS` | `10.0.0.5` | **Required.** Address of VM 2 as seen from VM 1 |
+| `ADLS_STORAGE_ACCOUNT` | `dataonboardingplatform` | **Required.** The ADLS Gen2 account (hierarchical namespace on; **soft delete, versioning, change feed and point-in-time restore off**, see ADR-0019). Jobs set the same name as the sink's `storage_account` |
 | `ORCHESTRATION_REPOSITORY`, `ORCHESTRATION_BASE_BRANCH` | | Optional; empty = `thanhphat2609/data-onboarding-orchestration` and `main` |
 | `UI_PORT`, `AIRFLOW_PUBLIC_URL`, `FLINK_PUBLIC_URL`, `JOBMANAGER_MEMORY`, `TASKMANAGER_SLOTS`, `TASKMANAGER_MEMORY` | | Optional; empty = the default in the Compose files |
 
@@ -74,8 +79,21 @@ Application secrets (source passwords, the orchestration token) are GitHub secre
 1. Docker Engine with the Compose plugin; a `deploy` user in the `docker` group with the CI public key.
 2. Clone the repository to `PROD_REPO_DIR` as `deploy`. For a private repository, add a read-only **deploy key** (repository Settings → Deploy keys) on each VM.
 3. No `.env` to write by hand: set the secrets and variables above; the first deploy writes `vm1/.env`, `vm1/sources.env` and `vm2/.env`.
-4. VM 1: deploy the data-onboarding-agent stack first (agent app, shared PostgreSQL, SearXNG; its own `infrastructure/prod/README.md`); it creates the `data-platform` network and the PostgreSQL server (ADR-0011). Then this repository, then data-onboarding-orchestration, whose Airflow needs this stack's volumes and a checkout next to this one. The agent's ports are localhost-only (7860, 5432), so they don't clash with this stack's 80, 8081, 6123 and 6124 or Airflow's 8080.
-5. Firewall: VM 2 → VM 1 on 6123-6124; VM 1 → VM 2 on 6121-6122; users → VM 1 on the UI port (Airflow 8080 and Flink 8081 only from admin networks); GitHub runners → both VMs on SSH.
+4. VM 1: deploy this repository first, then data-onboarding-orchestration, whose Airflow needs this stack's volumes and a checkout next to this one (`/opt/data-onboarding-orchestration`, and `/opt/data-onboarding-transformation` for dbt). Without the agent stack, the orchestration stack runs its own PostgreSQL and creates the `data-platform` network (its ADR-0005); with it, the agent stack does (ADR-0011).
+5. Demo sources (prototype): on VM 1, `docker compose -f infrastructure/prod/demo-sources.yml up -d --wait`.
+6. Firewall (Azure: network security group of each VM, inbound):
+
+| VM | Port | Source | For |
+|---|---|---|---|
+| VM 1 | 22 | GitHub runners (any) | Deploy over SSH |
+| VM 1 | 80, 8080, 8081 | admin networks | Web UI, Airflow, Flink UI |
+| VM 1 | 6123, 6124 | VM 2's address | Flink RPC and blob server |
+| VM 1 | 19092 | VM 2's address | Redpanda (API sources) |
+| VM 1 | 3306, 5432 | VM 2's address | Demo sources: the TaskManagers read them |
+| VM 2 | 22 | GitHub runners (any) | Deploy over SSH |
+| VM 2 | 6121, 6122 | VM 1's address | TaskManager data and RPC |
+
+The storage account's own firewall must allow both VMs' addresses if it is restricted to selected networks.
 
 If the VMs can't accept SSH from the internet, run a self-hosted GitHub runner on VM 1 instead and point the jobs at it (`runs-on: [self-hosted, prod]`).
 

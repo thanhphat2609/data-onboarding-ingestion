@@ -240,13 +240,13 @@ Flink image, `docs/spikes/phase-2.md`, updated [ADR-0004](adr/0004-lake-layout-a
 
 ### Checklist
 
-- [ ] `code/runner/` Python package (PyFlink 1.20, Python 3.11), Table API and SQL only. *First cut written 2026-11-02 (JDBC → Parquet staging); not run on a cluster yet*
+- [x] `code/runner/` Python package (PyFlink 1.20, Python 3.11), Table API and SQL only. *First run on the prototype cluster 2026-11-06: MySQL → Parquet on ADLS Gen2, started by Airflow ([ADR-0019](adr/0019-runner-on-the-prototype-cluster.md)). PostgreSQL and SQL Server not run on a cluster yet*
 - [ ] Loader of the job, its connection and the templates, and secret resolution (`env://`, later `kv://`) when the job graph is built. *Written 2026-11-02; no resolved spec (ADR-0010 update)*
-- [ ] Table mode and query mode (JDBC connector over a table or a derived table), BigQuery source. *JDBC over a derived table written; BigQuery to do*
+- [ ] Table mode and query mode (JDBC connector over a table or a derived table), BigQuery source. *Table mode works (plain `SELECT … FROM table`); the derived table fails on MySQL (spike 5), so query mode needs the `JdbcSource` fallback; BigQuery to do*
 - [x] Audit columns `ingest_date`, `_ingest_run_id`, `_ingested_at`
-- [ ] Parquet writer to staging (filesystem connector); written rows counted from Parquet footers by the publisher. *Writer written, writes `_staging/<run_id>/`; publisher in Phase 5*
+- [ ] Parquet writer to staging (filesystem connector); written rows counted from Parquet footers by the publisher. *Writer works: `--target staging` writes `_staging/<run_id>/`, `--target final` writes the table path and replaces the partition (what Airflow uses until the publisher exists); publisher in Phase 5*
 - [ ] Prometheus metrics reporter
-- [ ] JobManager image with Python, PyFlink and the runner; connectors and drivers in the Flink image; TaskManager image unchanged
+- [x] JobManager image with Python, PyFlink and the runner; connectors and drivers in the Flink image; TaskManager image unchanged. *Prod: the runner, templates and merged `pipelines/` are mounted on the JobManager; `flink-python-jar-init` puts the jar where Airflow can upload it*
 - [ ] `ingestctl submit` against the non-prod session cluster (Flink REST)
 - [ ] Integration tests against the non-prod sources
 

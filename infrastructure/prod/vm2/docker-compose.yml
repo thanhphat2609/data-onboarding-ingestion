@@ -13,6 +13,11 @@ services:
     image: ingestion-flink-taskmanager:prod
     command: taskmanager
     network_mode: host
+    # The TaskManagers read the sources themselves. The demo sources run on VM 1 (published ports 3306 and 5432) and
+    # are known by their service names in the connection files.
+    extra_hosts:
+      - "mysql-source:${FLINK_JOBMANAGER_ADDRESS:?}"
+      - "postgres-source:${FLINK_JOBMANAGER_ADDRESS:?}"
     environment:
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: ${FLINK_JOBMANAGER_ADDRESS:?private address of VM 1}

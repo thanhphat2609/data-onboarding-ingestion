@@ -87,6 +87,19 @@ services:
     networks: [default, platform]
     restart: unless-stopped
 
+  # Airflow submits the runner through the JobManager's REST API, which only runs jars it was handed: put the
+  # flink-python jar (PythonDriver) where Airflow can upload it from, on every deploy (the volume is filled once).
+  flink-python-jar-init:
+    image: ingestion-flink-jobmanager:prod
+    user: root
+    entrypoint: ["sh", "-c", "cp -f /opt/flink/lib/flink-python-*.jar /opt/flink/examples/flink-python.jar"]
+    volumes:
+      - flink-examples:/opt/flink/examples
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    restart: "no"
+
   flink-jobmanager:
     build:
       context: ../../..
@@ -117,6 +130,10 @@ services:
     volumes:
       - runs:/opt/ingestion/runs:ro
       - flink-examples:/opt/flink/examples
+      # The runner (ADR-0010) reads the merged job and connection files of the orchestration checkout, and the templates.
+      - ../../../code/runner:/opt/runner:ro
+      - ../../../code/templates:/opt/ingestion/templates:ro
+      - ${ORCHESTRATION_REPO_DIR:-../../../../data-onboarding-orchestration}/pipelines:/opt/ingestion/pipelines:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8081"]
       interval: 15s

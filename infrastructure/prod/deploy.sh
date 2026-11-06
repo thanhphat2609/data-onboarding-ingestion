@@ -33,7 +33,12 @@ echo "Deploying ${vm}: $(git rev-parse --short HEAD) -> ${sha:0:7}"
 git checkout --quiet --detach "$sha"
 
 "${compose[@]}" build --pull "${no_cache[@]}"
-"${compose[@]}" up -d --remove-orphans --wait --wait-timeout 600
+if ! "${compose[@]}" up -d --remove-orphans --wait --wait-timeout 600; then
+  # Say why in the workflow log: an unhealthy container is otherwise a bare exit code.
+  "${compose[@]}" ps --all >&2 || true
+  "${compose[@]}" logs --tail 40 >&2 || true
+  exit 1
+fi
 
 # Keep the disk in check: dangling images from earlier builds, and build cache unused for a week.
 docker image prune -f

@@ -22,7 +22,7 @@ from ingestion.settings import Settings
 from ingestion.sources import SourceClient, SourceError, client_for
 from ingestion.specs import InvalidSpec, validate_connection
 from ingestion.sql import check_sql
-from ingestion.store import ConfigStore, Conflict, NotFound, Publish
+from ingestion.store import ConfigStore, Conflict, NotFound, Publish, StorageError
 from ingestion.templates import Template, TemplateNotFound, TemplateRegistry
 
 Document = dict[str, Any]
@@ -45,11 +45,13 @@ def create_app(
 ) -> FastAPI:
     """Builds the API; ``publisher`` and ``source_factory`` are replaced by fakes in tests.
 
-    With ``SAVE_MODE=pull_request`` it refuses to start without a GitHub token, so a save never fails halfway.
+    It refuses to start when the pipelines working copy isn't writable, and in ``SAVE_MODE=pull_request`` also without a
+    GitHub token, so a save never fails halfway.
     """
     settings = settings or Settings.from_env()
     registry = TemplateRegistry(settings.templates_dir)
     store = ConfigStore(settings, registry)
+    store.check_writable()
     if settings.save_mode == "pull_request" and publisher is None:
         if not settings.github_token:
             raise RuntimeError("SAVE_MODE=pull_request needs GITHUB_TOKEN (Contents and Pull requests, read and write)")
@@ -82,6 +84,11 @@ def create_app(
         """502 when the pull request can't be opened; nothing is saved."""
         return JSONResponse({"detail": str(error)}, status_code=502)
 
+    @app.exception_handler(StorageError)
+    def storage_error(_: Request, error: StorageError) -> JSONResponse:
+        """500 with the reason when the working copy isn't writable; no pull request is opened."""
+        return JSONResponse({"detail": str(error)}, status_code=500)
+
     def require_name(path_name: str, document: Document) -> None:
         """The name in the body must be the one in the URL: names never change."""
         if document.get("name") != path_name:
@@ -107,7 +114,7 @@ def create_app(
     # --- saving: a file in pipelines/, plus a pull request in pull_request mode -----------------------
 
     def publication(kind: str, name: str, owner: object, is_new: bool) -> tuple[Publish | None, list[PullRequest]]:
-        """The store calls it with the validated file; it opens the pull request before the file is written."""
+        """The store calls it with the validated file, after the local write; it opens the pull request."""
         opened: list[PullRequest] = []
         if publisher is None:
             return None, opened

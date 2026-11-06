@@ -234,7 +234,8 @@ class ConfigStore:
                     # The pull request is open: a leftover local file must not turn the save into an error.
                     with contextlib.suppress(OSError):
                         path.unlink(missing_ok=True)
-            return yaml.safe_load(text)
+            stored: dict[str, Any] = yaml.safe_load(text)
+            return stored
 
     def check_writable(self) -> None:
         """Raises StorageError at startup unless the connections and jobs directories can be written."""

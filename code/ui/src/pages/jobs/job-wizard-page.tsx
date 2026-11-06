@@ -31,7 +31,7 @@ export function JobWizardPage() {
   const connections = useConnections()
   if ((name && job.isPending) || connections.isPending) return <Skeleton className="h-96 w-full" />
   if (job.isError) return <p className="text-destructive">{job.error.message}</p>
-  return <JobWizard key={name ?? 'new'} initial={job.data} connections={connections.data ?? []} />
+  return <JobWizard key={name ?? 'new'} initial={job.data} connections={(connections.data ?? []).filter((c) => !c.pending)} />
 }
 
 function JobWizard({ initial, connections }: { initial?: IngestionJob; connections: Connection[] }) {

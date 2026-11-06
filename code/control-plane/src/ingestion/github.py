@@ -28,6 +28,15 @@ class PullRequest:
     branch: str
 
 
+@dataclass(frozen=True)
+class PendingFile:
+    """A file that an open pull request adds or changes, read from the pull request's branch."""
+
+    pull: PullRequest
+    path: str
+    text: str
+
+
 class PullRequestPublisher:
     def __init__(
         self,
@@ -72,6 +81,28 @@ class PullRequestPublisher:
                 hint = " (check GITHUB_TOKEN: Contents and Pull requests, read and write)"
             raise GitHubError(f"GitHub {method} {path}: {response.status_code} {message}{hint}")
         return response
+
+    def pending_files(self, branch_prefix: str, path_prefix: str) -> list[PendingFile]:
+        """The files under ``path_prefix`` of the open pull requests whose branch starts with ``branch_prefix``.
+
+        These are saves that wait for their merge: the Web UI shows them, but nothing uses them yet.
+        """
+        pulls = self._request(
+            "GET", "/pulls", params={"state": "open", "base": self.base_branch, "per_page": "100"}
+        ).json()
+        found: list[PendingFile] = []
+        for pull in pulls:
+            branch = str(pull["head"]["ref"])
+            if not branch.startswith(branch_prefix):
+                continue
+            reference = PullRequest(number=int(pull["number"]), url=str(pull["html_url"]), branch=branch)
+            for changed in self._request("GET", f"/pulls/{reference.number}/files", params={"per_page": "100"}).json():
+                path = str(changed["filename"])
+                if not path.startswith(path_prefix) or changed.get("status") == "removed":
+                    continue
+                content = self._request("GET", f"/contents/{path}", params={"ref": branch}).json()["content"]
+                found.append(PendingFile(reference, path, base64.b64decode(content).decode("utf-8")))
+        return found
 
     def open(self, path: str, content: str, title: str, body: str, branch_prefix: str) -> PullRequest:
         """Commits ``content`` as ``path`` on a new branch and opens a pull request for it."""

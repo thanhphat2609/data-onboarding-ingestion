@@ -2,6 +2,7 @@ import { DatabaseIcon, PlusIcon } from 'lucide-react'
 import { Link } from 'react-router'
 import { useConnections, useJobs } from '@/api/hooks'
 import { PageHeader } from '@/components/page-header'
+import { Blurred, PendingBadge, PendingRow } from '@/components/pending-row'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -43,7 +44,39 @@ export function ConnectionsPage() {
                 </TableCell>
               </TableRow>
             )}
-            {connections.data?.map((c) => (
+            {connections.data?.map((c) =>
+              c.pending ? (
+                <PendingRow key={c.name} kind="connection" pull={c.pending}>
+                  <TableCell className="pl-4">
+                    <div className="flex items-center gap-2">
+                      <Blurred>
+                        <span className="font-medium">{c.name}</span>
+                      </Blurred>
+                      <PendingBadge />
+                    </div>
+                    <Blurred>
+                      <Badge variant="outline" className="mt-1">
+                        {c.template}
+                      </Badge>
+                    </Blurred>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <Blurred>
+                      {String(c.params.host ?? '')}
+                      {c.params.database ? ` / ${String(c.params.database)}` : ''}
+                    </Blurred>
+                  </TableCell>
+                  <TableCell>
+                    <Blurred>{c.owner}</Blurred>
+                  </TableCell>
+                  <TableCell>
+                    <Blurred>{c.limits?.max_concurrent_runs ?? 2}</Blurred>
+                  </TableCell>
+                  <TableCell className="pr-4 text-right">
+                    <Blurred>0</Blurred>
+                  </TableCell>
+                </PendingRow>
+              ) : (
               <TableRow key={c.name}>
                 <TableCell className="pl-4">
                   <Link to={`/connections/${c.name}/edit`} className="font-medium hover:underline">
@@ -63,7 +96,8 @@ export function ConnectionsPage() {
                 <TableCell>{c.limits?.max_concurrent_runs ?? 2}</TableCell>
                 <TableCell className="pr-4 text-right">{jobCount(c.name)}</TableCell>
               </TableRow>
-            ))}
+              ),
+            )}
             {connections.data?.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">

@@ -9,6 +9,7 @@ Run: ``uvicorn ingestion.api:create_app --factory --host 0.0.0.0 --port 8000``
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Annotated, Any
@@ -26,6 +27,7 @@ from ingestion.store import ConfigStore, Conflict, NotFound, Publish, StorageErr
 from ingestion.templates import Template, TemplateNotFound, TemplateRegistry
 
 Document = dict[str, Any]
+logger = logging.getLogger(__name__)
 
 
 class SqlRequest(BaseModel):
@@ -135,6 +137,21 @@ def create_app(
 
         return publish, opened
 
+    def saved_with_pull_request(
+        save: Callable[[Publish | None], Document],
+        document: Document,
+        opened_by: Callable[[], tuple[Publish | None, list[PullRequest]]],
+    ) -> Document:
+        """Runs ``save``; an error after the pull request is open still answers with it, never a 500 for an open PR."""
+        publish, opened = opened_by()
+        try:
+            return with_pull_request(save(publish), opened)
+        except Exception:
+            if not opened:
+                raise
+            logger.exception("Pull request %s is open, but finishing the save failed", opened[0].url)
+            return with_pull_request(document, opened)
+
     def with_pull_request(saved: Document, opened: list[PullRequest]) -> Document:
         """Adds the pull request (number, url, branch) to the saved document, if one was opened."""
         if not opened:
@@ -156,8 +173,11 @@ def create_app(
 
     def save_connection(connection: Document, is_new: bool) -> Document:
         """Saves a connection and, in pull_request mode, opens its pull request first."""
-        publish, opened = publication("connection", str(connection.get("name")), connection.get("owner"), is_new)
-        return with_pull_request(store.save_connection(connection, is_new, publish), opened)
+        return saved_with_pull_request(
+            lambda publish: store.save_connection(connection, is_new, publish),
+            connection,
+            lambda: publication("connection", str(connection.get("name")), connection.get("owner"), is_new),
+        )
 
     @app.post("/api/connections", status_code=201)
     def create_connection(connection: Annotated[Document, Body()]) -> Document:
@@ -192,8 +212,11 @@ def create_app(
 
     def save_job(job: Document, is_new: bool) -> Document:
         """Saves a job and, in pull_request mode, opens its pull request first."""
-        publish, opened = publication("job", str(job.get("name")), job.get("owner"), is_new)
-        return with_pull_request(store.save_job(job, is_new, publish), opened)
+        return saved_with_pull_request(
+            lambda publish: store.save_job(job, is_new, publish),
+            job,
+            lambda: publication("job", str(job.get("name")), job.get("owner"), is_new),
+        )
 
     @app.post("/api/jobs", status_code=201)
     def create_job(job: Annotated[Document, Body()]) -> Document:

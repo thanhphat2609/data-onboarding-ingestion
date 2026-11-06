@@ -3,10 +3,15 @@
 Here ``pipelines/`` is the Web UI's working copy; the files Airflow runs live in data-onboarding-orchestration and
 reach it by pull request (ADR-0017). The file name equals ``name``, names never change, and every write is
 validated first and replaces the file atomically.
+
+In ``pull_request`` mode the pull request is the record: once it is open the local file is deleted, so orchestration
+is the only place a connection or job is stored. What is already merged is read from ``reference_pipelines_dir``
+(a read-only checkout of the orchestration repository); a local file, if any, wins over it.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 from collections.abc import Callable
@@ -115,10 +120,22 @@ class ConfigStore:
 
     # --- reading ---------------------------------------------------------------------------------
 
+    def _dirs(self, directory: Path) -> list[Path]:
+        """The working copy folder, then the same folder of the orchestration checkout, if one is mounted."""
+        reference = self.settings.reference_pipelines_dir
+        return [directory] + ([reference / directory.name] if reference else [])
+
+    def _find(self, directory: Path, name: str) -> Path | None:
+        """The file of ``name`` in the working copy or the orchestration checkout (the working copy first)."""
+        for folder in self._dirs(directory):
+            if (folder / f"{name}.yaml").exists():
+                return folder / f"{name}.yaml"
+        return None
+
     def _read(self, directory: Path, name: str, kind: str) -> dict[str, Any]:
         """One document by file name; NotFound when the file doesn't exist."""
-        path = directory / f"{name}.yaml"
-        if not path.exists():
+        path = self._find(directory, name)
+        if path is None:
             raise NotFound(f'{kind} "{name}" not found')
         return _load_yaml(path)
 
@@ -127,7 +144,10 @@ class ConfigStore:
         valid: list[dict[str, Any]] = []
         invalid: list[InvalidFile] = []
         connections = {c["name"]: c for c in self.list_connections()} if kind == "job" else {}
-        for path in sorted(directory.glob("*.yaml")):
+        files: dict[str, Path] = {}
+        for folder in reversed(self._dirs(directory)):  # the working copy last, so it wins
+            files.update({path.name: path for path in folder.glob("*.yaml")})
+        for path in (files[name] for name in sorted(files)):
             relative = f"pipelines/{directory.name}/{path.name}"
             try:
                 document = _load_yaml(path)
@@ -172,17 +192,19 @@ class ConfigStore:
         kind: str,
         keys: list[str],
         publish: Publish | None,
-    ) -> None:
-        """Writes one file: new names must not exist, existing ones must.
+    ) -> dict[str, Any]:
+        """Writes one file: new names must not exist, existing ones must; returns the document as stored.
 
-        ``publish`` runs after the write; if it raises, the write is undone.
+        ``publish`` runs after the write; if it raises, the write is undone. When it succeeds in ``pull_request`` mode
+        the local file is deleted: the pull request is the record.
         """
         name = document["name"]
         path = directory / f"{name}.yaml"
         with self._lock:
-            if is_new and path.exists():
+            existing = self._find(directory, name)
+            if is_new and existing:
                 raise Conflict(f"pipelines/{directory.name}/{path.name} already exists")
-            if not is_new and not path.exists():
+            if not is_new and not existing:
                 raise NotFound(f'{kind} "{name}" not found; names can\'t be changed after creation')
             text = to_yaml(document, keys)
             previous = path.read_text(encoding="utf-8") if path.exists() else None
@@ -207,6 +229,13 @@ class ConfigStore:
                     else:
                         _write_atomic(path, previous)
                     raise
+                if self.settings.save_mode == "pull_request":
+                    # The pull request now holds the file; orchestration is the only place it is stored.
+                    # The pull request is open: a leftover local file must not turn the save into an error.
+                    with contextlib.suppress(OSError):
+                        path.unlink(missing_ok=True)
+            stored: dict[str, Any] = yaml.safe_load(text)
+            return stored
 
     def check_writable(self) -> None:
         """Raises StorageError at startup unless the connections and jobs directories can be written."""
@@ -227,8 +256,7 @@ class ConfigStore:
     ) -> dict[str, Any]:
         """Validates and saves a connection; returns the stored document."""
         validate_connection(connection, self.registry)
-        self._save(self.settings.connections_dir, connection, is_new, "Connection", _CONNECTION_KEYS, publish)
-        return self.get_connection(connection["name"])
+        return self._save(self.settings.connections_dir, connection, is_new, "Connection", _CONNECTION_KEYS, publish)
 
     def save_job(self, job: dict[str, Any], is_new: bool, publish: Publish | None = None) -> dict[str, Any]:
         """Validates and saves a job against its connection; returns the stored document."""
@@ -242,5 +270,4 @@ class ConfigStore:
             except InvalidSpec as error:
                 raise InvalidSpec([f"connection {job['connection']} is invalid: {error}"]) from None
         validate_job(job, connection, self.registry)
-        self._save(self.settings.jobs_dir, job, is_new, "Job", _JOB_KEYS, publish)
-        return self.get_job(job["name"])
+        return self._save(self.settings.jobs_dir, job, is_new, "Job", _JOB_KEYS, publish)

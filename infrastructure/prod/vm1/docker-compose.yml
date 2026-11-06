@@ -42,12 +42,16 @@ services:
       GITHUB_TOKEN: ${ORCHESTRATION_GITHUB_TOKEN:?}
       ORCHESTRATION_REPOSITORY: ${ORCHESTRATION_REPOSITORY:-thanhphat2609/data-onboarding-orchestration}
       ORCHESTRATION_BASE_BRANCH: ${ORCHESTRATION_BASE_BRANCH:-main}
+      # What is merged there is listed and read from this checkout; a save leaves nothing in the working copy.
+      INGESTION_REFERENCE_PIPELINES_DIR: /workspace/orchestration-pipelines
     env_file:
       - path: sources.env
         required: false
     volumes:
-      # Working copy of what was saved; the files Airflow runs are in data-onboarding-orchestration.
+      # Working copy of a save in progress (emptied once its pull request is open); the files Airflow runs, and what the
+      # API lists, are in the data-onboarding-orchestration checkout next to this repository.
       - api-pipelines:/workspace/pipelines
+      - ${ORCHESTRATION_REPO_DIR:-../../../../data-onboarding-orchestration}/pipelines:/workspace/orchestration-pipelines:ro
       - ../../../code/templates:/workspace/code/templates:ro
     depends_on:
       api-pipelines-init:

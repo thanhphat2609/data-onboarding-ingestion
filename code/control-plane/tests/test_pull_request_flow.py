@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from ingestion.api import create_app
 from ingestion.github import PullRequestPublisher
 from ingestion.settings import REPO_ROOT, Settings
-from ingestion.store import StorageError
+from ingestion.store import ConfigStore, StorageError, to_yaml
 
 CONNECTION = {
     "kind": "Connection",
@@ -71,9 +71,15 @@ class FakeGitHub:
         raise AssertionError(f"unexpected {request.method} {path}")
 
 
-def client(tmp_path: Path, github: FakeGitHub) -> TestClient:
+def client(tmp_path: Path, github: FakeGitHub, merged: dict[str, str] | None = None) -> TestClient:
+    """``merged``: files of the orchestration checkout (path under pipelines/ -> text), read-only for the API."""
+    reference = tmp_path / "orchestration" / "pipelines"
+    for name, text in (merged or {}).items():
+        (reference / name).parent.mkdir(parents=True, exist_ok=True)
+        (reference / name).write_text(text, encoding="utf-8")
     settings = replace(
         Settings.from_env(),
+        reference_pipelines_dir=reference,
         pipelines_dir=tmp_path / "pipelines",
         templates_dir=REPO_ROOT / "code" / "templates",
         save_mode="pull_request",
@@ -83,6 +89,11 @@ def client(tmp_path: Path, github: FakeGitHub) -> TestClient:
         "t0ken", "acme/orchestration", client=httpx.Client(transport=httpx.MockTransport(github))
     )
     return TestClient(create_app(settings, publisher))
+
+
+def yaml_text(document: dict[str, Any]) -> str:
+    """A document as the YAML the store writes."""
+    return to_yaml(document, ["kind", "name", "template", "owner", "params"])
 
 
 def test_saving_a_connection_opens_a_pull_request_with_the_file(tmp_path: Path) -> None:
@@ -95,14 +106,14 @@ def test_saving_a_connection_opens_a_pull_request_with_the_file(tmp_path: Path) 
     assert pull["branch"].startswith("ui/connection-sales-postgresql-")
     assert "name: sales-postgresql" in github.branches[pull["branch"]]["pipelines/connections/sales-postgresql.yaml"]
     assert github.pulls[0]["base"] == "main"
-    # The working copy keeps the file, so the job wizard can use the connection before the merge.
-    assert (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").exists()
+    # The pull request is the record: nothing stays in the working copy.
+    assert not (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").exists()
+    assert response.json()["name"] == "sales-postgresql"
 
 
 def test_changing_an_existing_file_sends_its_sha(tmp_path: Path) -> None:
     github = FakeGitHub({"pipelines/connections/sales-postgresql.yaml": "old"})
-    api = client(tmp_path, github)
-    api.post("/api/connections", json=CONNECTION)
+    api = client(tmp_path, github, {"connections/sales-postgresql.yaml": "old"})
 
     changed = {**CONNECTION, "owner": "other-team"}
     response = api.put("/api/connections/sales-postgresql", json=changed)
@@ -132,17 +143,44 @@ def test_github_failure_saves_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").exists()
 
 
-def test_github_failure_keeps_the_previous_file(tmp_path: Path) -> None:
+def test_github_failure_leaves_the_merged_file_alone(tmp_path: Path) -> None:
     github = FakeGitHub()
-    api = client(tmp_path, github)
-    api.post("/api/connections", json=CONNECTION)
+    api = client(tmp_path, github, {"connections/sales-postgresql.yaml": "old"})
     github.fail_with = 401
 
     response = api.put("/api/connections/sales-postgresql", json={**CONNECTION, "owner": "other-team"})
 
     assert response.status_code == 502
-    saved = (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").read_text()
-    assert "owner: data-team" in saved
+    assert not (tmp_path / "pipelines" / "connections" / "sales-postgresql.yaml").exists()
+    assert (tmp_path / "orchestration" / "pipelines" / "connections" / "sales-postgresql.yaml").read_text() == "old"
+
+
+def test_error_after_the_pull_request_is_open_still_answers_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure once the PR exists must not show as an error: the PR can't be taken back."""
+    github = FakeGitHub()
+    save = ConfigStore.save_connection
+
+    def save_then_fail(self: ConfigStore, connection: dict[str, Any], is_new: bool, publish: Any = None) -> Any:
+        """The real save (which opens the pull request), then an error."""
+        save(self, connection, is_new, publish)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ConfigStore, "save_connection", save_then_fail)
+    response = client(tmp_path, github).post("/api/connections", json=CONNECTION)
+
+    assert response.status_code == 201
+    assert response.json()["pullRequest"]["url"] == "https://github.com/acme/orchestration/pull/1"
+    assert len(github.pulls) == 1
+
+
+def test_connection_of_the_orchestration_checkout_is_listed_and_found(tmp_path: Path) -> None:
+    api = client(tmp_path, FakeGitHub(), {"connections/sales-postgresql.yaml": yaml_text(CONNECTION)})
+
+    assert [c["name"] for c in api.get("/api/connections").json()] == ["sales-postgresql"]
+    assert api.get("/api/connections/sales-postgresql").status_code == 200
+    assert api.post("/api/connections", json=CONNECTION).status_code == 409
 
 
 def test_unwritable_working_copy_opens_no_pull_request(tmp_path: Path) -> None:

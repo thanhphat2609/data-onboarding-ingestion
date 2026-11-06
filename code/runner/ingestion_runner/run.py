@@ -60,7 +60,8 @@ def run(argv: list[str] | None = None) -> None:
         "job": plan.job_name,
         "run_id": plan.run_id,
         "ingest_date": plan.ingest_date,
-        "flink_job_id": client.get_job_id() if client else None,
+        # A py4j JobID, not a str: json.dumps fails on it, and after the job was already submitted.
+        "flink_job_id": str(client.get_job_id()) if client else None,
         "columns": len(columns),
         "partitioned": bounds is not None,
         "staging": plan.staging_uri,

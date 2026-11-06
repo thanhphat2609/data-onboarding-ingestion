@@ -1,12 +1,15 @@
 """The three Flink SQL statements of a run: the JDBC source, the Parquet sink and the INSERT between them.
 
 Everything is plain SQL (ADR-0010): no Python UDFs, so the job graph runs entirely in the JVM and the TaskManagers need
-no Python. The user's query is the derived table ``(<query>) AS q``, which the JDBC connector reads like a table
-(including partitioned scans); spike 5 in docs/spikes/phase-2.md confirms it per dialect.
+no Python. The JDBC connector quotes its ``table-name`` as one identifier, so it can't read a derived table
+``(<query>) AS q`` (spike 5 in docs/spikes/phase-2.md found this on MySQL: "Identifier name ... is too long"). Until
+the ``JdbcSource`` fallback of ADR-0010 exists, the runner reads plain ``SELECT <columns or *> FROM <table>`` queries:
+the connector gets the table and reads only the columns of the DDL.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from ingestion_runner.plan import Plan
@@ -18,6 +21,29 @@ AUDIT_COLUMNS = ("ingest_date", "_ingest_run_id", "_ingested_at")
 class Column:
     name: str
     flink_type: str
+
+
+_IDENT = r"(?:[\w$]+|`[^`]+`|\"[^\"]+\"|\[[^\]]+\])"
+_PLAIN_SELECT = re.compile(
+    rf"^\s*SELECT\s+(?:\*|{_IDENT}(?:\s*,\s*{_IDENT})*)\s+FROM\s+({_IDENT}(?:\s*\.\s*{_IDENT})*)\s*$", re.IGNORECASE
+)
+
+
+def single_table(query: str, dialect: str) -> str:
+    """The table of a plain ``SELECT <columns or *> FROM <table>`` query, as the JDBC connector takes it.
+
+    Raises ValueError for anything else (joins, filters, expressions, aliases, subqueries).
+    """
+    found = _PLAIN_SELECT.match(query)
+    if not found:
+        raise ValueError(
+            "the runner reads plain `SELECT <columns or *> FROM <table>` queries for now: Flink's JDBC connector "
+            "can't read a derived table (ADR-0010, spike 5). Joins, filters, expressions and aliases need the "
+            "JdbcSource fallback."
+        )
+    parts = [re.sub(r'^[`"\[]|[`"\]]$', "", part.strip()) for part in re.findall(_IDENT, found.group(1))]
+    # MySQL's connector quotes the whole name as one identifier; the database is already in the JDBC URL.
+    return parts[-1] if dialect == "mysql" else ".".join(parts)
 
 
 def quote(name: str) -> str:
@@ -50,7 +76,7 @@ def source_ddl(plan: Plan, columns: list[Column], bounds: tuple[str, str] | None
         "driver": plan.driver,
         "username": plan.username,
         "password": plan.password,
-        "table-name": f"({plan.query}) AS q",
+        "table-name": single_table(plan.query, plan.dialect),
         "scan.fetch-size": plan.fetch_size,
     }
     if plan.dialect == "postgres":

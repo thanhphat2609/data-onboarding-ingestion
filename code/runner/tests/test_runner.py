@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from ingestion_runner import types
-from ingestion_runner.flink_sql import Column, check_columns, insert_sql, sink_ddl, source_ddl
+from ingestion_runner.flink_sql import Column, check_columns, insert_sql, single_table, sink_ddl, source_ddl
 from ingestion_runner.plan import SpecError, build_plan, render
 
 TEMPLATES = Path(__file__).resolve().parents[2] / "templates"
@@ -142,7 +142,7 @@ def test_sql_statements(pipelines: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 
     source = source_ddl(plan, columns, ("1", "5000"))
     assert "`order_id` BIGINT, `customer_id` INT" in source
-    assert "'table-name' = '(SELECT order_id, customer_id FROM orders) AS q'" in source
+    assert "'table-name' = 'orders'" in source
     assert "'password' = 'it''s'" in source
     assert "'scan.partition.column' = 'order_id'" in source
     assert "'scan.partition.lower-bound' = '1'" in source and "'scan.partition.upper-bound' = '5000'" in source
@@ -158,3 +158,26 @@ def test_sql_statements(pipelines: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         "INSERT INTO dst SELECT `order_id`, `customer_id`, '2026-11-02', 'run-1', "
         "CAST('2026-11-02 02:00:05.123' AS TIMESTAMP(3)) FROM src"
     )
+
+
+def test_single_table_queries_give_the_table_to_the_connector() -> None:
+    assert single_table("SELECT a, b FROM orders", "postgres") == "orders"
+    assert single_table("select * from `shop`.`customers`", "mysql") == "customers"  # the database is in the URL
+    assert single_table("SELECT a\n  FROM dbo.customers", "sqlserver") == "dbo.customers"
+    assert single_table('SELECT "a" FROM "sales"."orders"', "postgres") == "sales.orders"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT a FROM t WHERE a > 1",
+        "SELECT a FROM t JOIN u ON t.id = u.id",
+        "SELECT COUNT(*) FROM t",
+        "SELECT a AS b FROM t",
+        "SELECT a FROM (SELECT a FROM t) AS q",
+        "WITH x AS (SELECT 1) SELECT * FROM x",
+    ],
+)
+def test_other_queries_say_what_is_supported(query: str) -> None:
+    with pytest.raises(ValueError, match="plain `SELECT"):
+        single_table(query, "postgres")

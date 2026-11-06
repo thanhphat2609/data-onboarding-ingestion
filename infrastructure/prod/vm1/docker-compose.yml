@@ -109,6 +109,8 @@ services:
         execution.runtime-mode: BATCH
         python.client.executable: /opt/pyflink/bin/python
         python.executable: /opt/pyflink/bin/python
+        # ADLS Gen2 account key for abfss:// (the sink's storage_account must be this account).
+        fs.azure.account.key.${ADLS_STORAGE_ACCOUNT:?}.dfs.core.windows.net: ${ADLS_ACCOUNT_KEY:?}
     env_file:
       - path: sources.env
         required: false

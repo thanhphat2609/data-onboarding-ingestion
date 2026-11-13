@@ -7,7 +7,7 @@ Two VMs ([ADR-0009](../../docs/adr/0009-environments.md)), deployed by GitHub Ac
 ```
 vm1/docker-compose.yml   Web UI, Ingestion API, Flink JobManager, Redpanda
 vm2/docker-compose.yml   Flink TaskManager (host network)
-demo-sources.yml         Demo MySQL (shop) and PostgreSQL (sales) on VM 1; started by hand, never by a deploy
+demo-sources.yml         Demo MySQL (shop), PostgreSQL (sales) and SQL Server (crm) on VM 1; started by hand, never by a deploy
 deploy.sh                Run on a VM by the Deploy workflow: checkout <sha>, build, up, prune
 render_env.py            Used by the Deploy workflow: keys of the *.env.example files + GitHub secrets/variables -> .env, sources.env
 vm1/.env.example, vm1/sources.env.example, vm2/.env.example   every prod setting, by name (ADR-0013)
@@ -89,7 +89,7 @@ Application secrets (source passwords, the orchestration token) are GitHub secre
 | VM 1 | 80, 8080, 8081 | admin networks | Web UI, Airflow, Flink UI |
 | VM 1 | 6123, 6124 | VM 2's address | Flink RPC and blob server |
 | VM 1 | 19092 | VM 2's address | Redpanda (API sources) |
-| VM 1 | 3306, 5432 | VM 2's address | Demo sources: the TaskManagers read them |
+| VM 1 | 3306, 5432, 1433 | VM 2's address | Demo sources: the TaskManagers read them |
 | VM 2 | 22 | GitHub runners (any) | Deploy over SSH |
 | VM 2 | 6121, 6122 | VM 1's address | TaskManager data and RPC |
 

@@ -6,9 +6,10 @@
 # The hosts are the service names on the Docker network data-platform, which Airflow, Flink's JobManager and the API
 # share. The TaskManagers on VM 2 read the sources themselves: VM 1 publishes 3306, 5432 and 1433 (allow VM 2's
 # address in the firewall) and VM 2 resolves the three names to VM 1 (extra_hosts in vm2/docker-compose.yml).
-# Prototype password for every login: DataOnboarding2026, override with DEMO_SOURCES_PASSWORD. The read-only one must
-# equal the GitHub secrets SHOP_MYSQL_RO_PASSWORD, SALES_POSTGRES_RO_PASSWORD and CRM_SQLSERVER_RO_PASSWORD. A demo
-# default, not for real systems: in prod proper the connections point at the real systems.
+# Password for every login comes from DEMO_SOURCES_PASSWORD (no insecure built-in default, since VM 1 publishes
+# these ports on its public network). The read-only one must equal the GitHub secrets SHOP_MYSQL_RO_PASSWORD,
+# SALES_POSTGRES_RO_PASSWORD and CRM_SQLSERVER_RO_PASSWORD. Not for real systems: in prod proper the connections
+# point at the real systems.
 
 name: demo-sources
 
@@ -17,9 +18,9 @@ services:
     image: mysql:8.4.13
     command: ["--innodb-buffer-pool-size=256M", "--performance-schema=OFF"]
     environment:
-      MYSQL_ROOT_PASSWORD: ${DEMO_SOURCES_PASSWORD:-DataOnboarding2026}
+      MYSQL_ROOT_PASSWORD: ${DEMO_SOURCES_PASSWORD:?set in vm1/.env}
       MYSQL_DATABASE: shop
-      RO_PASSWORD: ${DEMO_SOURCES_PASSWORD:-DataOnboarding2026}
+      RO_PASSWORD: ${DEMO_SOURCES_PASSWORD:?set in vm1/.env}
     volumes:
       - mysql-source-data:/var/lib/mysql
       - ../non-prod/example-sources/mysql/01-shop.sh:/docker-entrypoint-initdb.d/01-shop.sh:ro
@@ -37,9 +38,9 @@ services:
   postgres-source:
     image: postgres:16.15-alpine
     environment:
-      POSTGRES_PASSWORD: ${DEMO_SOURCES_PASSWORD:-DataOnboarding2026}
+      POSTGRES_PASSWORD: ${DEMO_SOURCES_PASSWORD:?set in vm1/.env}
       POSTGRES_DB: sales
-      RO_PASSWORD: ${DEMO_SOURCES_PASSWORD:-DataOnboarding2026}
+      RO_PASSWORD: ${DEMO_SOURCES_PASSWORD:?set in vm1/.env}
     volumes:
       - postgres-source-data:/var/lib/postgresql/data
       - ../non-prod/example-sources/postgresql/01-sales.sh:/docker-entrypoint-initdb.d/01-sales.sh:ro
@@ -59,7 +60,7 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: Developer
-      MSSQL_SA_PASSWORD: ${DEMO_SOURCES_PASSWORD:-DataOnboarding2026}
+      MSSQL_SA_PASSWORD: ${DEMO_SOURCES_PASSWORD:?set in vm1/.env}
       MSSQL_MEMORY_LIMIT_MB: "1536"
     volumes:
       - sqlserver-source-data:/var/opt/mssql
@@ -86,7 +87,7 @@ services:
       - -U
       - sa
       - -P
-      - ${DEMO_SOURCES_PASSWORD:-DataOnboarding2026}
+      - ${DEMO_SOURCES_PASSWORD:?set in vm1/.env}
       - -b
       - -i
       - /seed/seed.sql

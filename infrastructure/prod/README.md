@@ -40,10 +40,10 @@ Secrets and variables are per repository: set them here, in data-onboarding-agen
 | Name | Example | What it is |
 |---|---|---|
 | `PROD_SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----`<br>`b3BlbnNzaC1rZXktdjEAAAAA...`<br>`-----END OPENSSH PRIVATE KEY-----` | Whole content of the private key file, including the BEGIN/END lines. Made once for CI only: `ssh-keygen -t ed25519 -C github-deploy -f deploy_key -N ""`; `deploy_key.pub` goes into `/home/deploy/.ssh/authorized_keys` on both VMs |
-| `PROD_SSH_KNOWN_HOSTS` | `20.198.10.15 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK...`<br>`20.198.10.16 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM...` | Output of `ssh-keyscan -t ed25519 20.198.10.15 20.198.10.16` (one line per VM); compare the fingerprints with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on each VM |
+| `PROD_SSH_KNOWN_HOSTS` | `203.0.113.10 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK...`<br>`203.0.113.11 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM...` | Output of `ssh-keyscan -t ed25519 203.0.113.10 203.0.113.11` (one line per VM); compare the fingerprints with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on each VM |
 | `PROD_SSH_USER` | `deploy` | Linux user on the VMs, member of the `docker` group |
-| `PROD_VM1_HOST` | `20.198.10.15` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
-| `PROD_VM2_HOST` | `20.198.10.16` or `vm2.dataplatform.example.com` | Address of VM 2 that GitHub's runners can reach |
+| `PROD_VM1_HOST` | `203.0.113.10` or `vm1.dataplatform.example.com` | Address of VM 1 that GitHub's runners can reach |
+| `PROD_VM2_HOST` | `203.0.113.11` or `vm2.dataplatform.example.com` | Address of VM 2 that GitHub's runners can reach |
 | `ADLS_ACCOUNT_KEY` | | Access key of the ADLS Gen2 account the sinks write to; goes into the Flink configuration of both VMs. Rotate it in the portal when the demo is over |
 
 App settings (written into the files on the VMs):
@@ -62,7 +62,7 @@ App settings (written into the files on the VMs):
 | `PROD_SSH_PORT` | `22` | SSH port of the VMs (default `22`) |
 | `FLINK_JOBMANAGER_ADDRESS` | `10.0.0.4` | **Required.** Address of VM 1 as seen from VM 2 (used on both VMs). The public address when the VMs are in different virtual networks, as in the prototype |
 | `FLINK_TASKMANAGER_ADDRESS` | `10.0.0.5` | **Required.** Address of VM 2 as seen from VM 1 |
-| `ADLS_STORAGE_ACCOUNT` | `dataonboardingplatform` | **Required.** The ADLS Gen2 account (hierarchical namespace on; **soft delete, versioning, change feed and point-in-time restore off**, see ADR-0019). Jobs set the same name as the sink's `storage_account` |
+| `ADLS_STORAGE_ACCOUNT` | `<storage-account>` | **Required.** The ADLS Gen2 account (hierarchical namespace on; **soft delete, versioning, change feed and point-in-time restore off**, see ADR-0019). Jobs set the same name as the sink's `storage_account` |
 | `ORCHESTRATION_REPOSITORY`, `ORCHESTRATION_BASE_BRANCH` | | Optional; empty = `thanhphat2609/data-onboarding-orchestration` and `main` |
 | `UI_PORT`, `AIRFLOW_PUBLIC_URL`, `FLINK_PUBLIC_URL`, `JOBMANAGER_MEMORY`, `TASKMANAGER_SLOTS`, `TASKMANAGER_MEMORY` | | Optional; empty = the default in the Compose files |
 
